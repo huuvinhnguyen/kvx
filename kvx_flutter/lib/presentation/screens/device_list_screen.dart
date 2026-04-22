@@ -5,6 +5,7 @@ import '../providers/device_provider.dart';
 import '../widgets/filter_bar.dart';
 import '../widgets/device_row.dart';
 import 'add_device_sheet.dart';
+import 'device_detail_screen.dart';
 
 class DeviceListScreen extends StatefulWidget {
   const DeviceListScreen({super.key});
@@ -58,27 +59,76 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                   onRefresh: provider.refresh,
                   child: provider.filteredDevices.isEmpty
                       ? _buildEmptyState()
-                      : ListView.separated(
-                          itemCount: provider.filteredDevices.length,
-                          separatorBuilder: (_, index) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final device = provider.filteredDevices[index];
-                            return Dismissible(
-                              key: Key(device.id),
-                              direction: DismissDirection.endToStart,
-                              background: Container(
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 16),
-                                color: Colors.red,
-                                child: const Icon(Icons.delete, color: Colors.white),
+                      : Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                border: Border(
+                                  bottom: BorderSide(color: Colors.grey.shade300),
+                                ),
                               ),
-                              onDismissed: (_) => provider.deleteDevice(device),
-                              child: DeviceRow(
-                                device: device,
-                                onTap: () => provider.toggleStatus(device),
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 40),
+                                  const Expanded(
+                                    child: Text(
+                                      'Tên thiết bị',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 100,
+                                    alignment: Alignment.center,
+                                    child: const Text(
+                                      'Hoạt động',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            );
-                          },
+                            ),
+                            Expanded(
+                              child: ListView.separated(
+                                itemCount: provider.filteredDevices.length,
+                                separatorBuilder: (_, index) => Divider(height: 1, color: Colors.grey.shade200),
+                                itemBuilder: (context, index) {
+                                  final device = provider.filteredDevices[index];
+                                  return Dismissible(
+                                    key: Key(device.id),
+                                    direction: DismissDirection.endToStart,
+                                    background: Container(
+                                      alignment: Alignment.centerRight,
+                                      padding: const EdgeInsets.only(right: 16),
+                                      color: Colors.red,
+                                      child: const Icon(Icons.delete, color: Colors.white),
+                                    ),
+                                    onDismissed: (_) => provider.deleteDevice(device),
+                                    child: DeviceRow(
+                                      device: device,
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => DeviceDetailScreen(device: device),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ),

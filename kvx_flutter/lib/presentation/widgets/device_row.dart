@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../models/device.dart';
+import '../../domain/entities/device.dart';
 
 class DeviceRow extends StatelessWidget {
   final Device device;

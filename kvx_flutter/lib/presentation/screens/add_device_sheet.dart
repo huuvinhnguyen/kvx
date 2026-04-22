@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../models/device.dart';
-import '../../viewmodels/device_viewmodel.dart';
+import 'package:provider/provider.dart';
+import '../../domain/entities/device.dart';
+import '../providers/device_provider.dart';
 
 class AddDeviceSheet extends StatefulWidget {
-  final DeviceViewModel viewModel;
-
-  const AddDeviceSheet({super.key, required this.viewModel});
+  const AddDeviceSheet({super.key});
 
   @override
   State<AddDeviceSheet> createState() => _AddDeviceSheetState();
@@ -55,6 +54,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet> {
                 border: OutlineInputBorder(),
               ),
               autofocus: true,
+              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<DeviceType>(
@@ -112,11 +112,11 @@ class _AddDeviceSheetState extends State<AddDeviceSheet> {
               onPressed: _nameController.text.isEmpty
                   ? null
                   : () {
-                      widget.viewModel.addDevice(
-                        name: _nameController.text,
-                        type: _selectedType,
-                        status: _selectedStatus,
-                      );
+                      context.read<DeviceProvider>().addDevice(
+                            name: _nameController.text,
+                            type: _selectedType,
+                            status: _selectedStatus,
+                          );
                       Navigator.pop(context);
                     },
               child: const Text('Add Device'),

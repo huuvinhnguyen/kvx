@@ -26,14 +26,14 @@ class Device {
   final String id;
   final String name;
   final DeviceType type;
-  DeviceStatus status;
+  final DeviceStatus status;
 
-  Device({
-    String? id,
+  const Device({
+    required this.id,
     required this.name,
     required this.type,
     required this.status,
-  }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+  });
 
   Device copyWith({
     String? id,
@@ -49,13 +49,11 @@ class Device {
     );
   }
 
-  static List<Device> sampleDevices = [
-    Device(name: 'iPhone 16 Pro', type: DeviceType.iPhone, status: DeviceStatus.online),
-    Device(name: 'iPhone 15', type: DeviceType.iPhone, status: DeviceStatus.busy),
-    Device(name: 'iPhone 14 Pro', type: DeviceType.iPhone, status: DeviceStatus.offline),
-    Device(name: 'iPad Pro 13"', type: DeviceType.iPad, status: DeviceStatus.online),
-    Device(name: 'iPad Air', type: DeviceType.iPad, status: DeviceStatus.offline),
-    Device(name: 'iPhone SE', type: DeviceType.iPhone, status: DeviceStatus.online),
-    Device(name: 'Vision Simulator', type: DeviceType.simulator, status: DeviceStatus.online),
-  ];
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Device && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

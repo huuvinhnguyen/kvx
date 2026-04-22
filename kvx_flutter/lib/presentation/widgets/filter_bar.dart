@@ -21,7 +21,7 @@ class FilterBar extends StatelessWidget {
           filters.length,
           (index) => Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
+            child: _FilterChip(
               title: filters[index],
               isSelected: selectedIndex == index,
               onTap: () => onFilterChanged(index),
@@ -33,13 +33,12 @@ class FilterBar extends StatelessWidget {
   }
 }
 
-class FilterChip extends StatelessWidget {
+class _FilterChip extends StatelessWidget {
   final String title;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const FilterChip({
-    super.key,
+  const _FilterChip({
     required this.title,
     required this.isSelected,
     required this.onTap,

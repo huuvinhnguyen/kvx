@@ -1,0 +1,19 @@
+name: Feature Request
+description: Suggest a new feature
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Description
+        <!-- What feature do you want to add? -->
+
+        ## Use Case
+        <!-- Why do you need this feature? -->
+
+        ## Proposed Solution
+        <!-- How should it work? -->
+
+        ## Additional Context
+        <!-- Any other information -->

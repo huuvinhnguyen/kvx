@@ -1,0 +1,28 @@
+name: Bug Report
+description: File a bug report
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Description
+        <!-- Describe the bug -->
+
+        ## Steps to Reproduce
+        1.
+        2.
+        3.
+
+        ## Expected Behavior
+        <!-- What should happen -->
+
+        ## Actual Behavior
+        <!-- What actually happens -->
+
+        ## Environment
+        - Device:
+        - OS:
+        - Flutter version:
+
+        ## Screenshots (if applicable)

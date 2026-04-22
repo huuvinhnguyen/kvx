@@ -1,0 +1,67 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.pub-cache
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+
+      - name: Install dependencies
+        run: |
+          cd kvx_flutter
+          flutter pub get
+
+      - name: Analyze
+        run: |
+          cd kvx_flutter
+          flutter analyze
+
+      - name: Build Web
+        run: |
+          cd kvx_flutter
+          flutter build web
+
+      - name: Build iOS (macOS only)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd kvx_flutter
+          flutter build ios --simulator --no-codesign
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          cd kvx_flutter
+          flutter pub get
+
+      - name: Build iOS
+        run: |
+          cd kvx_flutter
+          flutter build ios --simulator --no-codesign

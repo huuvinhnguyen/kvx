@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/device.dart';
+import '../extensions/device_presentation.dart';
 import '../../domain/entities/schedule.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
@@ -84,9 +85,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.device.name),
-      ),
+      appBar: AppBar(title: Text(widget.device.name)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -141,10 +140,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 const SizedBox(height: 4),
                 Text(
                   widget.device.type.displayName,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                 ),
               ],
             ),
@@ -196,10 +192,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         children: [
           const Text(
             'Điều khiển thiết bị',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           Row(
@@ -207,10 +200,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               Expanded(
                 child: Text(
                   'Bật/Tắt thiết bị',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                 ),
               ),
               Switch(
@@ -266,10 +256,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         children: [
           const Text(
             'Hẹn giờ',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           Row(
@@ -336,10 +323,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             const SizedBox(height: 8),
             const Text(
               'Danh sách hẹn giờ',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             ListView.separated(
@@ -350,7 +334,10 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               itemBuilder: (context, index) {
                 final schedule = _schedules[index];
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -386,7 +373,10 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                        ),
                         onPressed: () => _removeSchedule(schedule),
                       ),
                     ],

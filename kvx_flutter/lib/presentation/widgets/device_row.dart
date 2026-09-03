@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/device.dart';
+import '../extensions/device_presentation.dart';
 
 class DeviceRow extends StatelessWidget {
   final Device device;
   final VoidCallback onTap;
 
-  const DeviceRow({
-    super.key,
-    required this.device,
-    required this.onTap,
-  });
+  const DeviceRow({super.key, required this.device, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -19,11 +16,7 @@ class DeviceRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(
-              device.type.icon,
-              size: 24,
-              color: device.status.color,
-            ),
+            Icon(device.type.icon, size: 24, color: device.status.color),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -37,9 +30,7 @@ class DeviceRow extends StatelessWidget {
             ),
             SizedBox(
               width: 100,
-              child: Center(
-                child: StatusBadge(status: device.status),
-              ),
+              child: Center(child: StatusBadge(status: device.status)),
             ),
           ],
         ),
@@ -69,10 +60,7 @@ class StatusBadge extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           status.displayName,
-          style: TextStyle(
-            fontSize: 12,
-            color: status.color,
-          ),
+          style: TextStyle(fontSize: 12, color: status.color),
         ),
       ],
     );

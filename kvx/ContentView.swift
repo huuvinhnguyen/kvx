@@ -8,11 +8,13 @@
 import SwiftUI
 
 struct ContentView: View {
+    let viewModel: DeviceViewModel
+
     var body: some View {
-        DeviceListView()
+        DeviceListView(viewModel: viewModel)
     }
 }
 
 #Preview {
-    ContentView()
+    ContentView(viewModel: DeviceViewModel(repository: RemoteDeviceRepository()))
 }

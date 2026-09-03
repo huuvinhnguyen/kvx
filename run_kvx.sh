@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # 1. Cấu hình
 PROJECT_NAME="kvx.xcodeproj"
 SCHEME_NAME="kvx"
@@ -7,14 +9,12 @@ SCHEME_NAME="kvx"
 echo "🚀 Đang build dự án $SCHEME_NAME..."
 
 # 2. Build dự án (Bỏ qua thư mục Index)
-xcodebuild -project "$PROJECT_NAME" \
-           -scheme "$SCHEME_NAME" \
-           -sdk iphonesimulator \
-           -configuration Debug build | xcpretty || xcodebuild -project "$PROJECT_NAME" -scheme "$SCHEME_NAME" -sdk iphonesimulator -configuration Debug build
-
-if [ $? -ne 0 ]; then
-    echo "❌ Build thất bại."
-    exit 1
+BUILD_ARGS=(-project "$PROJECT_NAME" -scheme "$SCHEME_NAME" -sdk iphonesimulator -configuration Debug build)
+if command -v xcpretty >/dev/null 2>&1; then
+    xcodebuild "${BUILD_ARGS[@]}" | xcpretty
+else
+    echo "ℹ️ xcpretty chưa được cài, dùng output mặc định của xcodebuild."
+    xcodebuild "${BUILD_ARGS[@]}"
 fi
 
 echo "✅ Build thành công!"

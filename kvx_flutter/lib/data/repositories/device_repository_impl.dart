@@ -10,9 +10,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<List<Device>> getDevices() async {
-    if (_devices.isEmpty) {
-      _devices = await _dataSource.getDevices();
-    }
+    _devices = await _dataSource.getDevices();
     return List.from(_devices);
   }
 

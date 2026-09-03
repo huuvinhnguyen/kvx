@@ -8,15 +8,42 @@
 import SwiftUI
 
 struct DeviceListView: View {
-    @State private var viewModel = DeviceViewModel()
+    @State private var viewModel: DeviceViewModel
     @State private var showingAddSheet = false
+
+    init(viewModel: DeviceViewModel) {
+        _viewModel = State(initialValue: viewModel)
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Debug HUD: show temperature sensor count/names
+                if !viewModel.devices.filter({ $0.type == .temperature }).isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Temp sensors: \(viewModel.devices.filter { $0.type == .temperature }.count)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.devices.filter { $0.type == .temperature }.map { $0.name }.joined(separator: ", "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
+
                 FilterBar(selectedFilter: $viewModel.selectedFilter)
                     .padding(.horizontal)
                     .padding(.vertical, 8)
+
+                if let errorMessage = viewModel.errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.bottom, 6)
+                }
 
                 List {
                     ForEach(viewModel.filteredDevices) { device in
@@ -37,6 +64,9 @@ struct DeviceListView: View {
                     ProgressView()
                         .padding()
                 }
+            }
+            .task {
+                await viewModel.loadDevices()
             }
             .navigationTitle("Devices")
             .searchable(text: $viewModel.searchText, prompt: "Search devices")
@@ -106,6 +136,8 @@ struct AddDeviceSheet: View {
     @State private var name = ""
     @State private var selectedType: Device.DeviceType = .iPhone
     @State private var selectedStatus: Device.DeviceStatus = .online
+    @State private var temperatureText: String = ""
+    @State private var humidityText: String = ""
 
     var body: some View {
         NavigationStack {
@@ -124,7 +156,7 @@ struct AddDeviceSheet: View {
                         ForEach(Device.DeviceStatus.allCases, id: \.self) { status in
                             HStack {
                                 Circle()
-                                    .fill(status.color)
+                                    .fill(statusColor(status))
                                     .frame(width: 8, height: 8)
                                 Text(status.rawValue)
                             }
@@ -132,6 +164,15 @@ struct AddDeviceSheet: View {
                         }
                     }
                     .pickerStyle(.inline)
+                }
+
+                if selectedType == .temperature {
+                    Section("Sensor Values") {
+                        TextField("Temperature (°C)", text: $temperatureText)
+                            .keyboardType(.decimalPad)
+                        TextField("Humidity (%)", text: $humidityText)
+                            .keyboardType(.numberPad)
+                    }
                 }
             }
             .navigationTitle("Add Device")
@@ -144,10 +185,14 @@ struct AddDeviceSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
+                        let tempVal = Double(temperatureText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        let humVal = Double(humidityText.trimmingCharacters(in: .whitespacesAndNewlines))
                         viewModel.addDevice(
                             name: name,
                             type: selectedType,
-                            status: selectedStatus
+                            status: selectedStatus,
+                            temperature: tempVal,
+                            humidity: humVal
                         )
                         dismiss()
                     }
@@ -177,6 +222,21 @@ struct DeviceRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if device.type == .temperature {
+                        if let t = device.temperature {
+                            Text(String(format: "%.1f°C", t))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let h = device.humidity {
+                            Text("•")
+                                .foregroundStyle(.secondary)
+                            Text(String(format: "%d%%", Int(h)))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     Text("•")
                         .foregroundStyle(.secondary)
 
@@ -201,6 +261,10 @@ struct DeviceRow: View {
             return "ipad"
         case .simulator:
             return "desktopcomputer"
+        case .temperature:
+            return "thermometer"
+        case .switch:
+            return "power"
         }
     }
 
@@ -213,6 +277,14 @@ struct DeviceRow: View {
         case .busy:
             return .orange
         }
+    }
+}
+
+private func statusColor(_ status: Device.DeviceStatus) -> Color {
+    switch status {
+    case .online: return .green
+    case .offline: return .gray
+    case .busy: return .orange
     }
 }
 
@@ -244,5 +316,5 @@ struct StatusBadge: View {
 }
 
 #Preview {
-    DeviceListView()
+    DeviceListView(viewModel: DeviceViewModel(repository: RemoteDeviceRepository()))
 }

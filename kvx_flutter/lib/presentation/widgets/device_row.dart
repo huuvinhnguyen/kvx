@@ -1,42 +1,40 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/device.dart';
+import '../extensions/device_presentation.dart';
 
 class DeviceRow extends StatelessWidget {
   final Device device;
   final VoidCallback onTap;
 
-  const DeviceRow({
-    super.key,
-    required this.device,
-    required this.onTap,
-  });
+  const DeviceRow({super.key, required this.device, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    return InkWell(
       onTap: onTap,
-      leading: Icon(
-        device.type.icon,
-        size: 28,
-        color: device.status.color,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(device.type.icon, size: 24, color: device.status.color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                device.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 15,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SizedBox(
+              width: 100,
+              child: Center(child: StatusBadge(status: device.status)),
+            ),
+          ],
+        ),
       ),
-      title: Text(
-        device.name,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Row(
-        children: [
-          Text(
-            device.type.displayName,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
-          const SizedBox(width: 6),
-          const Text('•', style: TextStyle(color: Colors.grey)),
-          const SizedBox(width: 6),
-          StatusBadge(status: device.status),
-        ],
-      ),
-      trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
     );
   }
 }
@@ -62,10 +60,7 @@ class StatusBadge extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           status.displayName,
-          style: TextStyle(
-            fontSize: 12,
-            color: status.color,
-          ),
+          style: TextStyle(fontSize: 12, color: status.color),
         ),
       ],
     );

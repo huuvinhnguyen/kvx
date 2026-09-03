@@ -1,26 +1,6 @@
-import 'package:flutter/material.dart';
+enum DeviceType { iPhone, iPad, simulator, switchDevice, temperature }
 
-enum DeviceType {
-  iPhone('iPhone', Icons.phone_iphone),
-  iPad('iPad', Icons.tablet),
-  simulator('Simulator', Icons.desktop_windows);
-
-  final String displayName;
-  final IconData icon;
-
-  const DeviceType(this.displayName, this.icon);
-}
-
-enum DeviceStatus {
-  online('Online', Colors.green),
-  offline('Offline', Colors.grey),
-  busy('Busy', Colors.orange);
-
-  final String displayName;
-  final Color color;
-
-  const DeviceStatus(this.displayName, this.color);
-}
+enum DeviceStatus { online, offline, busy }
 
 class Device {
   final String id;

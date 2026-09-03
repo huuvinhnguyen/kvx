@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../domain/entities/device.dart';
+import '../extensions/device_presentation.dart';
 import '../providers/device_provider.dart';
 
 class AddDeviceSheet extends StatefulWidget {
@@ -113,10 +114,10 @@ class _AddDeviceSheetState extends State<AddDeviceSheet> {
                   ? null
                   : () {
                       context.read<DeviceProvider>().addDevice(
-                            name: _nameController.text,
-                            type: _selectedType,
-                            status: _selectedStatus,
-                          );
+                        name: _nameController.text,
+                        type: _selectedType,
+                        status: _selectedStatus,
+                      );
                       Navigator.pop(context);
                     },
               child: const Text('Add Device'),

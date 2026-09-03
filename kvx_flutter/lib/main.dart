@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'data/datasources/in_memory_device_datasource.dart';
+import 'data/datasources/binblog_device_datasource.dart';
 import 'data/repositories/device_repository_impl.dart';
 import 'application/usecases/device_usecases.dart';
 import 'presentation/providers/device_provider.dart';
@@ -16,7 +16,12 @@ class KvxApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dataSource = InMemoryDeviceDataSource();
+    const username = String.fromEnvironment('BINBLOG_USERNAME');
+    const password = String.fromEnvironment('BINBLOG_PASSWORD');
+    final dataSource = BinblogDeviceDataSource(
+      username: username,
+      password: password,
+    );
     final repository = DeviceRepositoryImpl(dataSource);
 
     return MultiProvider(

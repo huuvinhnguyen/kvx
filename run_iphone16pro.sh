@@ -1,43 +1,52 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-# Script to build and run KVx app on iPhone 16 Pro simulator
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR/kvx_flutter"
+SIMULATOR_NAME="iPhone 16 Pro"
+SIMULATOR_ID="65A80E5B-E316-471D-9BD7-E1B9D8FF2D01"
+APP_PATH="$PROJECT_DIR/build/ios/iphonesimulator/Runner.app"
+BUNDLE_ID="com.kvx.kvxFlutter"
 
-PROJECT_DIR="$(cd "$(dirname "$0")/kvx_flutter" && pwd)"
+if [[ -z "${BINBLOG_USERNAME:-}" || -z "${BINBLOG_PASSWORD:-}" ]]; then
+    echo "Set BINBLOG_USERNAME and BINBLOG_PASSWORD before running."
+    exit 1
+fi
+
+if ! xcrun simctl list devices | grep -q "$SIMULATOR_ID"; then
+    echo "Simulator not found: $SIMULATOR_NAME ($SIMULATOR_ID)"
+    exit 1
+fi
 
 cd "$PROJECT_DIR"
 
-echo "=== Building KVx for iOS (iPhone 16 Pro Simulator) ==="
+echo "=== Building KVX Flutter for $SIMULATOR_NAME ==="
 
-# Get list of available simulators
-echo "Available simulators:"
-xcrun simctl list devices available | grep -E "iPhone" | head -10
-
-# Boot iPhone 16 Pro simulator if not running
-SIMULATOR_NAME="iPhone 16 Pro"
-SIMULATOR_ID="65A80E5B-E316-471D-9BD7-E1B9D8FF2D01"
-
-SIMULATOR_STATE=$(xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep "Booted" || true)
-
-if [ -z "$SIMULATOR_STATE" ]; then
-    echo ""
-    echo "Booting $SIMULATOR_NAME simulator..."
+if ! xcrun simctl list devices | grep "$SIMULATOR_ID" | grep -q "Booted"; then
+    echo "Booting $SIMULATOR_NAME..."
     xcrun simctl boot "$SIMULATOR_ID"
-    echo "Simulator booted."
-else
-    echo "$SIMULATOR_NAME is already booted."
 fi
+xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
-# Open Simulator app (optional, for visual feedback)
 open -a Simulator 2>/dev/null || true
 
-echo ""
-echo "Building and running Flutter app..."
-echo ""
+echo "Installing Flutter dependencies..."
+flutter pub get
 
-# Build and run using device ID (more reliable)
-flutter run -d "$SIMULATOR_ID"
+echo "Building simulator app..."
+flutter build ios --simulator \
+    --dart-define="BINBLOG_USERNAME=$BINBLOG_USERNAME" \
+    --dart-define="BINBLOG_PASSWORD=$BINBLOG_PASSWORD"
 
-echo ""
-echo "Done!"
+if [[ ! -d "$APP_PATH" ]]; then
+    echo "Build succeeded but app was not found: $APP_PATH"
+    exit 1
+fi
+
+echo "Installing and launching $BUNDLE_ID..."
+xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE_ID" 2>/dev/null || true
+xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
+xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID"
+
+echo "Done. Flutter app is running on $SIMULATOR_NAME."

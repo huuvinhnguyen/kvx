@@ -10,10 +10,16 @@ import SwiftUI
 
 @Observable
 final class DeviceViewModel {
+    private let fetchDevicesUseCase: FetchDevicesUseCase
     var devices: [Device] = Device.sampleDevices
     var isLoading: Bool = false
+    var errorMessage: String?
     var searchText: String = ""
     var selectedFilter: DeviceFilter = .all
+
+    init(repository: DeviceRepository) {
+        fetchDevicesUseCase = FetchDevicesUseCase(repository: repository)
+    }
 
     enum DeviceFilter: String, CaseIterable {
         case all = "All"
@@ -55,10 +61,19 @@ final class DeviceViewModel {
         devices.filter { $0.status == .busy }.count
     }
 
-    func refresh() async {
+    func loadDevices() async {
         isLoading = true
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        errorMessage = nil
+        do {
+            devices = try await fetchDevicesUseCase.execute()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         isLoading = false
+    }
+
+    func refresh() async {
+        await loadDevices()
     }
 
     func deleteDevices(at offsets: IndexSet) {
@@ -85,8 +100,8 @@ final class DeviceViewModel {
         }
     }
 
-    func addDevice(name: String, type: Device.DeviceType, status: Device.DeviceStatus) {
-        let newDevice = Device(name: name, type: type, status: status)
+    func addDevice(name: String, type: Device.DeviceType, status: Device.DeviceStatus, temperature: Double? = nil, humidity: Double? = nil) {
+        let newDevice = Device(name: name, type: type, status: status, temperature: temperature, humidity: humidity)
         devices.append(newDevice)
     }
 
@@ -102,7 +117,14 @@ final class DeviceViewModel {
             case .busy:
                 newStatus = .online
             }
-            devices[index] = Device(name: device.name, type: device.type, status: newStatus)
+            devices[index] = Device(
+                id: device.id,
+                name: device.name,
+                type: device.type,
+                status: newStatus,
+                temperature: device.temperature,
+                humidity: device.humidity
+            )
         }
     }
 }

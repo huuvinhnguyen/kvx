@@ -14,36 +14,46 @@ class DeviceProvider extends ChangeNotifier {
     required AddDeviceUseCase addDeviceUseCase,
     required DeleteDeviceUseCase deleteDeviceUseCase,
     required ToggleDeviceStatusUseCase toggleStatusUseCase,
-  })  : _getDevicesUseCase = getDevicesUseCase,
-        _addDeviceUseCase = addDeviceUseCase,
-        _deleteDeviceUseCase = deleteDeviceUseCase,
-        _toggleStatusUseCase = toggleStatusUseCase;
+  }) : _getDevicesUseCase = getDevicesUseCase,
+       _addDeviceUseCase = addDeviceUseCase,
+       _deleteDeviceUseCase = deleteDeviceUseCase,
+       _toggleStatusUseCase = toggleStatusUseCase;
 
   List<Device> _devices = [];
   bool _isLoading = false;
+  String? _errorMessage;
   String _searchText = '';
   DeviceFilter _selectedFilter = DeviceFilter.all;
 
   List<Device> get devices => _devices;
   bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
   String get searchText => _searchText;
   DeviceFilter get selectedFilter => _selectedFilter;
 
   List<Device> get filteredDevices {
-    var result = _devices.where((d) => d.name.toLowerCase().contains(_searchText.toLowerCase())).toList();
+    var result = _devices
+        .where((d) => d.name.toLowerCase().contains(_searchText.toLowerCase()))
+        .toList();
     return result.where((d) => _selectedFilter.matches(d)).toList();
   }
 
-  int get onlineCount => _devices.where((d) => d.status == DeviceStatus.online).length;
-  int get offlineCount => _devices.where((d) => d.status == DeviceStatus.offline).length;
-  int get busyCount => _devices.where((d) => d.status == DeviceStatus.busy).length;
+  int get onlineCount =>
+      _devices.where((d) => d.status == DeviceStatus.online).length;
+  int get offlineCount =>
+      _devices.where((d) => d.status == DeviceStatus.offline).length;
+  int get busyCount =>
+      _devices.where((d) => d.status == DeviceStatus.busy).length;
 
   Future<void> loadDevices() async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
       _devices = await _getDevicesUseCase();
+    } catch (error) {
+      _errorMessage = error.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -64,7 +74,11 @@ class DeviceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addDevice({required String name, required DeviceType type, required DeviceStatus status}) async {
+  Future<void> addDevice({
+    required String name,
+    required DeviceType type,
+    required DeviceStatus status,
+  }) async {
     final device = Device(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,

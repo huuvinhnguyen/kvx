@@ -47,11 +47,11 @@ struct DeviceListView: View {
 
                 List {
                     ForEach(viewModel.filteredDevices) { device in
-                        DeviceRow(device: device)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                viewModel.toggleStatus(for: device)
-                            }
+                        NavigationLink {
+                            DeviceDetailView(device: device)
+                        } label: {
+                            DeviceRow(device: device)
+                        }
                     }
                     .onDelete(perform: viewModel.deleteDevices)
                 }

@@ -2,7 +2,9 @@
 
 ## Status
 
-Planned.
+Completed on 2026-09-06.
+
+Commit: `4b5d66b`
 
 ## Goal
 

@@ -15,13 +15,37 @@ struct Device: Identifiable {
     let temperature: Double?
     let humidity: Double?
 
-    init(id: String = UUID().uuidString, name: String, type: DeviceType, status: DeviceStatus, temperature: Double? = nil, humidity: Double? = nil) {
+    // Relay-specific fields (nil for non-relay devices)
+    let relayCount: Int?
+    let relayChannels: [RelayChannel]?
+    let firmwareVersion: String?
+    let appVersion: String?
+    let lastConnected: Date?
+
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        type: DeviceType,
+        status: DeviceStatus,
+        temperature: Double? = nil,
+        humidity: Double? = nil,
+        relayCount: Int? = nil,
+        relayChannels: [RelayChannel]? = nil,
+        firmwareVersion: String? = nil,
+        appVersion: String? = nil,
+        lastConnected: Date? = nil
+    ) {
         self.id = id
         self.name = name
         self.type = type
         self.status = status
         self.temperature = temperature
         self.humidity = humidity
+        self.relayCount = relayCount
+        self.relayChannels = relayChannels
+        self.firmwareVersion = firmwareVersion
+        self.appVersion = appVersion
+        self.lastConnected = lastConnected
     }
 
     enum DeviceType: String, CaseIterable {

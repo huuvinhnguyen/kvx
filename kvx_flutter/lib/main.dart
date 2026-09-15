@@ -26,6 +26,10 @@ class KvxApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        Provider<BinblogDeviceDataSource>(
+          create: (_) => dataSource,
+          dispose: (_, source) => source.close(),
+        ),
         ChangeNotifierProvider(
           create: (_) => DeviceProvider(
             getDevicesUseCase: GetDevicesUseCase(repository),

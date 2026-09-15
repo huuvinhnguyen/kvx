@@ -1,47 +1,24 @@
 #!/bin/bash
+set -euo pipefail
 
-set -e
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SIMULATOR_ID="${SIMULATOR_ID:-65A80E5B-E316-471D-9BD7-E1B9D8FF2D01}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PROJECT_DIR/build/native-derived}"
 
-# 1. Cấu hình
-PROJECT_NAME="kvx.xcodeproj"
-SCHEME_NAME="kvx"
+# Build and install the same output; never pick an arbitrary app from DerivedData.
+xcodebuild -project "$PROJECT_DIR/kvx.xcodeproj" -scheme kvx \
+  -configuration Debug -sdk iphonesimulator \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+  -derivedDataPath "$DERIVED_DATA_PATH" CODE_SIGNING_ALLOWED=NO build
 
-echo "🚀 Đang build dự án $SCHEME_NAME..."
-
-# 2. Build dự án (Bỏ qua thư mục Index)
-BUILD_ARGS=(-project "$PROJECT_NAME" -scheme "$SCHEME_NAME" -sdk iphonesimulator -configuration Debug build)
-if command -v xcpretty >/dev/null 2>&1; then
-    xcodebuild "${BUILD_ARGS[@]}" | xcpretty
-else
-    echo "ℹ️ xcpretty chưa được cài, dùng output mặc định của xcodebuild."
-    xcodebuild "${BUILD_ARGS[@]}"
+APP_PATH="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/kvx.app"
+if [ ! -d "$APP_PATH" ]; then
+  echo "Không tìm thấy bản vừa build: $APP_PATH" >&2
+  exit 1
 fi
 
-echo "✅ Build thành công!"
-
-# 3. Mở Simulator
-open -a Simulator
-
-# 4. Tìm đường dẫn file .app chuẩn (loại bỏ Index.noindex)
-APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "$SCHEME_NAME.app" -type d | grep -v "Index.noindex" | head -n 1)
-
-if [ -z "$APP_PATH" ]; then
-    echo "❌ Không tìm thấy file .app thực thi."
-    exit 1
-fi
-
-# 5. Lấy Bundle Identifier
-BUNDLE_ID=$(defaults read "$APP_PATH/Info.plist" CFBundleIdentifier)
-
-if [ -z "$BUNDLE_ID" ]; then
-    echo "❌ Không lấy được Bundle ID từ $APP_PATH"
-    exit 1
-fi
-
-echo "📦 Đang cài đặt App: $BUNDLE_ID"
-xcrun simctl install booted "$APP_PATH"
-
-echo "🏃 Đang chạy App..."
-xcrun simctl launch booted "$BUNDLE_ID"
-
-echo "✨ Hoàn tất!"
+# bootstatus waits for a usable simulator and boots it if necessary.
+xcrun simctl bootstatus "$SIMULATOR_ID" -b
+xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
+xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" com.kvx.kvx
+echo "Đã cài và chạy bản native mới nhất. Đăng nhập Binblog trong ứng dụng để tải thiết bị."

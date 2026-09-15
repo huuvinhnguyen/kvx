@@ -15,6 +15,14 @@ struct DeviceDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        if device.type == .pir {
+            PIRDetailView(device: device)
+        } else {
+            legacyDetail
+        }
+    }
+
+    private var legacyDetail: some View {
         ScrollView {
             VStack(spacing: 24) {
                 deviceInfoCard
@@ -212,6 +220,7 @@ struct DeviceDetailView: View {
 
     private var deviceIcon: String {
         switch device.type {
+        case .pir: return "sensor.tag.radiowaves.forward"
         case .iPhone: return "iphone"
         case .iPad: return "ipad"
         case .simulator: return "desktopcomputer"

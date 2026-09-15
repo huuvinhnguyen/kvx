@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pir_detail_screen.dart';
 import '../../domain/entities/device.dart';
 import '../extensions/device_presentation.dart';
 import '../../domain/entities/schedule.dart';
@@ -84,6 +85,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.device.type == DeviceType.pir) {
+      return PirDetailScreen(device: widget.device);
+    }
     return Scaffold(
       appBar: AppBar(title: Text(widget.device.name)),
       body: SingleChildScrollView(

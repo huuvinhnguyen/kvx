@@ -4,6 +4,7 @@ import '../../domain/entities/device.dart';
 
 extension DeviceTypePresentation on DeviceType {
   String get displayName => switch (this) {
+    DeviceType.pir => 'PIR',
     DeviceType.iPhone => 'iPhone',
     DeviceType.iPad => 'iPad',
     DeviceType.simulator => 'Simulator',
@@ -12,6 +13,7 @@ extension DeviceTypePresentation on DeviceType {
   };
 
   IconData get icon => switch (this) {
+    DeviceType.pir => Icons.sensors,
     DeviceType.iPhone => Icons.phone_iphone,
     DeviceType.iPad => Icons.tablet,
     DeviceType.simulator => Icons.desktop_windows,

@@ -8,12 +8,14 @@
 import Foundation
 import SwiftUI
 
+@MainActor
 @Observable
 final class DeviceViewModel {
     private let fetchDevicesUseCase: FetchDevicesUseCase
-    var devices: [Device] = Device.sampleDevices
+    var devices: [Device] = []
     var isLoading: Bool = false
     var errorMessage: String?
+    var needsLogin = false
     var searchText: String = ""
     var selectedFilter: DeviceFilter = .all
 
@@ -64,9 +66,18 @@ final class DeviceViewModel {
     func loadDevices() async {
         isLoading = true
         errorMessage = nil
+        needsLogin = false
         do {
             devices = try await fetchDevicesUseCase.execute()
         } catch {
+            if let apiError = error as? DeviceAPIError {
+                switch apiError {
+                case .missingAccessToken, .httpStatus(401):
+                    needsLogin = true
+                    devices = []
+                default: break
+                }
+            }
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -120,6 +131,7 @@ final class DeviceViewModel {
             devices[index] = Device(
                 id: device.id,
                 name: device.name,
+                chipID: device.chipID,
                 type: device.type,
                 status: newStatus,
                 temperature: device.temperature,

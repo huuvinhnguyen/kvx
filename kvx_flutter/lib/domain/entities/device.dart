@@ -1,12 +1,13 @@
 import 'relay_channel.dart';
 
-enum DeviceType { iPhone, iPad, simulator, switchDevice, temperature }
+enum DeviceType { iPhone, iPad, simulator, switchDevice, temperature, pir }
 
 enum DeviceStatus { online, offline, busy }
 
 class Device {
   final String id;
   final String name;
+  final String? chipId;
   final DeviceType type;
   final DeviceStatus status;
 
@@ -20,6 +21,7 @@ class Device {
   const Device({
     required this.id,
     required this.name,
+    this.chipId,
     required this.type,
     required this.status,
     this.relayCount,
@@ -32,6 +34,7 @@ class Device {
   Device copyWith({
     String? id,
     String? name,
+    String? chipId,
     DeviceType? type,
     DeviceStatus? status,
     int? relayCount,
@@ -43,6 +46,7 @@ class Device {
     return Device(
       id: id ?? this.id,
       name: name ?? this.name,
+      chipId: chipId ?? this.chipId,
       type: type ?? this.type,
       status: status ?? this.status,
       relayCount: relayCount ?? this.relayCount,

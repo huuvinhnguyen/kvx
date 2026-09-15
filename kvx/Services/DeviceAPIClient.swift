@@ -2,9 +2,11 @@ import Foundation
 
 struct BinblogDeviceDataSource {
     private let baseURL = URL(string: "https://khuonvien.vn")!
+    private let session: URLSession
     private let tokenProvider: AccessTokenProvider
 
-    init(tokenProvider: AccessTokenProvider = UserDefaultsAccessTokenProvider()) {
+    init(tokenProvider: AccessTokenProvider = UserDefaultsAccessTokenProvider(), session: URLSession = .shared) {
+        self.session = session
         self.tokenProvider = tokenProvider
     }
 
@@ -18,7 +20,7 @@ struct BinblogDeviceDataSource {
         }
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw DeviceAPIError.invalidResponse
         }
@@ -37,6 +39,7 @@ private struct DeviceListResponse: Decodable {
 
 private struct APIDevice: Decodable {
     let id: Int
+    let chipID: String?
     let name: String
     let deviceType: String?
     let status: Int?
@@ -44,6 +47,7 @@ private struct APIDevice: Decodable {
     enum CodingKeys: String, CodingKey {
         case id
         case name
+        case chipID = "chip_id"
         case deviceType = "device_type"
         case status
     }
@@ -53,7 +57,9 @@ private enum DeviceMapper {
     static func map(_ apiDevice: APIDevice) -> Device {
         let normalizedType = apiDevice.deviceType?.lowercased() ?? ""
         let type: Device.DeviceType
-        if normalizedType.contains("ipad") {
+        if normalizedType == "pir" {
+            type = .pir
+        } else if normalizedType.contains("ipad") {
             type = .iPad
         } else if normalizedType.contains("simulator") {
             type = .simulator
@@ -75,7 +81,7 @@ private enum DeviceMapper {
             deviceStatus = .offline
         }
 
-        return Device(id: String(apiDevice.id), name: apiDevice.name, type: type, status: deviceStatus)
+        return Device(id: String(apiDevice.id), name: apiDevice.name, chipID: apiDevice.chipID, type: type, status: deviceStatus)
     }
 }
 
@@ -90,6 +96,8 @@ enum DeviceAPIError: LocalizedError {
             return "Chưa có access token. Hãy đăng nhập Binblog trước."
         case .invalidResponse:
             return "Phản hồi từ Binblog không hợp lệ."
+        case .httpStatus(401):
+            return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại Binblog."
         case .httpStatus(let statusCode):
             return "Binblog trả về lỗi HTTP \(statusCode)."
         }

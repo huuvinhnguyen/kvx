@@ -3,12 +3,14 @@ import '../../domain/entities/device.dart';
 class BinblogDeviceDto {
   final int id;
   final String name;
+  final String? chipId;
   final String? deviceType;
   final int? status;
 
   const BinblogDeviceDto({
     required this.id,
     required this.name,
+    this.chipId,
     this.deviceType,
     this.status,
   });
@@ -16,6 +18,7 @@ class BinblogDeviceDto {
   factory BinblogDeviceDto.fromJson(Map<String, dynamic> json) {
     return BinblogDeviceDto(
       id: json['id'] as int,
+      chipId: json['chip_id'] as String?,
       name: json['name'] as String? ?? 'Unnamed device',
       deviceType: json['device_type'] as String?,
       status: json['status'] as int?,
@@ -24,10 +27,11 @@ class BinblogDeviceDto {
 
   Device toDomain() {
     final rawType = (deviceType ?? '').toLowerCase();
-    final type =
-        rawType.contains('dht') ||
-            rawType.contains('temperature') ||
-            rawType.contains('sensor')
+    final type = rawType == 'pir'
+        ? DeviceType.pir
+        : rawType.contains('dht') ||
+              rawType.contains('temperature') ||
+              rawType.contains('sensor')
         ? DeviceType.temperature
         : rawType.contains('switch')
         ? DeviceType.switchDevice
@@ -43,6 +47,12 @@ class BinblogDeviceDto {
       _ => DeviceStatus.offline,
     };
 
-    return Device(id: '$id', name: name, type: type, status: deviceStatus);
+    return Device(
+      id: '$id',
+      name: name,
+      chipId: chipId,
+      type: type,
+      status: deviceStatus,
+    );
   }
 }

@@ -9,6 +9,7 @@ import Foundation
 
 struct Device: Identifiable {
     let id: String
+    let chipID: String?
     let name: String
     let type: DeviceType
     let status: DeviceStatus
@@ -25,6 +26,7 @@ struct Device: Identifiable {
     init(
         id: String = UUID().uuidString,
         name: String,
+        chipID: String? = nil,
         type: DeviceType,
         status: DeviceStatus,
         temperature: Double? = nil,
@@ -37,6 +39,7 @@ struct Device: Identifiable {
     ) {
         self.id = id
         self.name = name
+        self.chipID = chipID
         self.type = type
         self.status = status
         self.temperature = temperature
@@ -49,6 +52,7 @@ struct Device: Identifiable {
     }
 
     enum DeviceType: String, CaseIterable {
+        case pir = "PIR"
         case iPhone = "iPhone"
         case iPad = "iPad"
         case simulator = "Simulator"

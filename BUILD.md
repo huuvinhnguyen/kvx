@@ -36,11 +36,10 @@ Credentials duoc truyen vao Flutter bang `--dart-define` va khong duoc ghi vao s
 
 Script [run_kvx.sh](run_kvx.sh) se:
 
-1. Build scheme `kvx` bang Xcode.
-2. Mo Simulator.
-3. Tim file `kvx.app` trong DerivedData.
-4. Cai app vao simulator dang boot.
-5. Khoi dong bundle `com.kvx.kvx`.
+1. Build scheme `kvx` vao `build/native-derived`.
+2. Boot simulator duoc chon boi `SIMULATOR_ID` (mac dinh iPhone 16 Pro).
+3. Cai dung `kvx.app` vua build, khong tim ban cu trong DerivedData.
+4. Khoi dong lai bundle `com.kvx.kvx` tren simulator do.
 
 Chay:
 
@@ -48,6 +47,13 @@ Chay:
 cd /Users/vinhnguyen/Documents/kvx
 ./run_kvx.sh
 ```
+
+Trong app, bam **Dang nhap Binblog** va dung cung tai khoan voi Flutter.
+Native goi `POST /api/login`, luu access token va tai lai danh sach thiet bi.
+Mat khau khong duoc luu. Khi token het han (401), app yeu cau dang nhap lai.
+Danh sach mau khong con duoc hien thi khi chua dang nhap.
+
+Co the chon simulator khac bang `SIMULATOR_ID=<UUID> ./run_kvx.sh`.
 
 App Swift native doc access token Binblog tu `UserDefaults` voi key:
 

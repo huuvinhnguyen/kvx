@@ -10,6 +10,7 @@ import SwiftUI
 struct DeviceListView: View {
     @State private var viewModel: DeviceViewModel
     @State private var showingAddSheet = false
+    @State private var showingLogin = false
 
     init(viewModel: DeviceViewModel) {
         _viewModel = State(initialValue: viewModel)
@@ -18,20 +19,6 @@ struct DeviceListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Debug HUD: show temperature sensor count/names
-                if !viewModel.devices.filter({ $0.type == .temperature }).isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Temp sensors: \(viewModel.devices.filter { $0.type == .temperature }.count)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(viewModel.devices.filter { $0.type == .temperature }.map { $0.name }.joined(separator: ", "))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
-                }
-
                 FilterBar(selectedFilter: $viewModel.selectedFilter)
                     .padding(.horizontal)
                     .padding(.vertical, 8)
@@ -45,6 +32,12 @@ struct DeviceListView: View {
                         .padding(.bottom, 6)
                 }
 
+                if viewModel.needsLogin {
+                    Button("Đăng nhập Binblog") { showingLogin = true }
+                        .buttonStyle(.borderedProminent)
+                        .padding()
+                }
+
                 List {
                     ForEach(viewModel.filteredDevices) { device in
                         NavigationLink {
@@ -56,6 +49,15 @@ struct DeviceListView: View {
                     .onDelete(perform: viewModel.deleteDevices)
                 }
                 .listStyle(.insetGrouped)
+                .overlay {
+                    if viewModel.filteredDevices.isEmpty && !viewModel.isLoading {
+                        ContentUnavailableView(
+                            viewModel.needsLogin ? "Cần đăng nhập" : "Chưa có thiết bị",
+                            systemImage: viewModel.needsLogin ? "person.crop.circle.badge.exclamationmark" : "sensor.tag.radiowaves.forward",
+                            description: Text(viewModel.needsLogin ? "Đăng nhập tài khoản Binblog để tải danh sách thiết bị thật." : "Kiểm tra bộ lọc hoặc kéo xuống để tải lại.")
+                        )
+                    }
+                }
                 .refreshable {
                     await viewModel.refresh()
                 }
@@ -78,6 +80,11 @@ struct DeviceListView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
+                }
+            }
+            .sheet(isPresented: $showingLogin) {
+                BinblogLoginView {
+                    Task { await viewModel.loadDevices() }
                 }
             }
             .sheet(isPresented: $showingAddSheet) {
@@ -255,6 +262,7 @@ struct DeviceRow: View {
 
     private func iconForType(_ type: Device.DeviceType) -> String {
         switch type {
+        case .pir: return "sensor.tag.radiowaves.forward"
         case .iPhone:
             return "iphone"
         case .iPad:

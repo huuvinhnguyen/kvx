@@ -27,7 +27,9 @@ class BinblogDeviceDto {
 
   Device toDomain() {
     final rawType = (deviceType ?? '').toLowerCase();
-    final type = rawType == 'pir'
+    final type = rawType == 'buzzer'
+        ? DeviceType.buzzer
+        : rawType == 'pir'
         ? DeviceType.pir
         : rawType.contains('dht') ||
               rawType.contains('temperature') ||

@@ -52,6 +52,7 @@ struct Device: Identifiable {
     }
 
     enum DeviceType: String, CaseIterable {
+        case buzzer = "Buzzer"
         case pir = "PIR"
         case iPhone = "iPhone"
         case iPad = "iPad"

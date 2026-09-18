@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'data/datasources/binblog_device_datasource.dart';
+import 'data/repositories/binblog_buzzer_repository.dart';
+import 'application/usecases/buzzer_usecases.dart';
 import 'data/repositories/device_repository_impl.dart';
 import 'application/usecases/device_usecases.dart';
 import 'presentation/providers/device_provider.dart';
@@ -29,6 +31,9 @@ class KvxApp extends StatelessWidget {
         Provider<BinblogDeviceDataSource>(
           create: (_) => dataSource,
           dispose: (_, source) => source.close(),
+        ),
+        Provider<BuzzerUseCases>(
+          create: (_) => BuzzerUseCases(BinblogBuzzerRepository(dataSource)),
         ),
         ChangeNotifierProvider(
           create: (_) => DeviceProvider(

@@ -57,7 +57,9 @@ private enum DeviceMapper {
     static func map(_ apiDevice: APIDevice) -> Device {
         let normalizedType = apiDevice.deviceType?.lowercased() ?? ""
         let type: Device.DeviceType
-        if normalizedType == "pir" {
+        if normalizedType == "buzzer" {
+            type = .buzzer
+        } else if normalizedType == "pir" {
             type = .pir
         } else if normalizedType.contains("ipad") {
             type = .iPad

@@ -41,7 +41,7 @@ struct DeviceListView: View {
                 List {
                     ForEach(viewModel.filteredDevices) { device in
                         NavigationLink {
-                            DeviceDetailView(device: device)
+                            DeviceDetailView(device: device, buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()))
                         } label: {
                             DeviceRow(device: device)
                         }
@@ -262,6 +262,7 @@ struct DeviceRow: View {
 
     private func iconForType(_ type: Device.DeviceType) -> String {
         switch type {
+        case .buzzer: return "bell.badge"
         case .pir: return "sensor.tag.radiowaves.forward"
         case .iPhone:
             return "iphone"

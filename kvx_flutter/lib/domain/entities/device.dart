@@ -1,6 +1,14 @@
 import 'relay_channel.dart';
 
-enum DeviceType { iPhone, iPad, simulator, switchDevice, temperature, pir }
+enum DeviceType {
+  iPhone,
+  iPad,
+  simulator,
+  switchDevice,
+  temperature,
+  pir,
+  buzzer,
+}
 
 enum DeviceStatus { online, offline, busy }
 

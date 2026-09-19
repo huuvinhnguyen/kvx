@@ -9,13 +9,17 @@ import SwiftUI
 
 struct DeviceDetailView: View {
     let device: Device
+    let buzzerUseCases: BuzzerUseCases
     @State private var isOn = false
     @State private var schedules: [Schedule] = []
     @State private var showingAddSchedule = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        if device.type == .pir {
+        if device.type == .buzzer {
+            BuzzerDetailView(device: device, useCases: buzzerUseCases)
+                .id(device.id)
+        } else if device.type == .pir {
             PIRDetailView(device: device)
         } else {
             legacyDetail
@@ -220,6 +224,7 @@ struct DeviceDetailView: View {
 
     private var deviceIcon: String {
         switch device.type {
+        case .buzzer: return "bell.badge"
         case .pir: return "sensor.tag.radiowaves.forward"
         case .iPhone: return "iphone"
         case .iPad: return "ipad"
@@ -352,6 +357,6 @@ struct AddScheduleSheet: View {
 
 #Preview {
     NavigationStack {
-        DeviceDetailView(device: Device.sampleDevices[0])
+        DeviceDetailView(device: Device.sampleDevices[0], buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()))
     }
 }

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../application/usecases/buzzer_usecases.dart';
+import 'buzzer_detail_screen.dart';
 import 'pir_detail_screen.dart';
 import '../../domain/entities/device.dart';
 import '../extensions/device_presentation.dart';
@@ -85,6 +88,12 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.device.type == DeviceType.buzzer) {
+      return BuzzerDetailScreen(
+        device: widget.device,
+        useCases: context.read<BuzzerUseCases>(),
+      );
+    }
     if (widget.device.type == DeviceType.pir) {
       return PirDetailScreen(device: widget.device);
     }

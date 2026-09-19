@@ -44,6 +44,32 @@ class BinblogDeviceDataSource implements DeviceDataSource {
     if (response.statusCode != 200) {
       throw BinblogApiException(
         'Không tải được dữ liệu (${response.statusCode}). Hãy thử lại.',
+        statusCode: response.statusCode,
+      );
+    }
+    return _decodeObject(response.body);
+  }
+
+  Future<Map<String, dynamic>> postJson(String path) async {
+    final token = await _token();
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/$path'),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: '{}',
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode == 401) _accessToken = null;
+    if (response.statusCode != 200) {
+      final retry = int.tryParse(response.headers['retry-after'] ?? '') ?? 3;
+      throw BinblogApiException(
+        'Không gửi được lệnh.',
+        statusCode: response.statusCode,
+        retryAfterSeconds: retry.clamp(1, 60),
       );
     }
     return _decodeObject(response.body);
@@ -70,6 +96,7 @@ class BinblogDeviceDataSource implements DeviceDataSource {
     if (loginResponse.statusCode != 200) {
       throw BinblogApiException(
         'Đăng nhập Binblog thất bại (${loginResponse.statusCode}).',
+        statusCode: loginResponse.statusCode,
       );
     }
 
@@ -112,8 +139,14 @@ class BinblogDeviceDataSource implements DeviceDataSource {
 
 class BinblogApiException implements Exception {
   final String message;
+  final int? statusCode;
+  final int retryAfterSeconds;
 
-  const BinblogApiException(this.message);
+  const BinblogApiException(
+    this.message, {
+    this.statusCode,
+    this.retryAfterSeconds = 3,
+  });
 
   @override
   String toString() => message;

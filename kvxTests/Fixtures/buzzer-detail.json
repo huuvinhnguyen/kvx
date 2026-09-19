@@ -1,0 +1,16 @@
+{
+  "id": "59",
+  "name": "Buzzer kiểm thử",
+  "chip_id": "fixture_buzzer",
+  "online": true,
+  "last_seen": "2026-09-17T15:00:00+07:00",
+  "build_version": "1.2",
+  "app_version": "2.0",
+  "test_duration_ms": 1000,
+  "sources": [
+    { "id": "64", "name": "PIR kiểm thử", "chip_id": "fixture_pir", "relay_index": 0, "duration_ms": 1000 }
+  ],
+  "events": [
+    { "id": "123", "source_id": "64", "source_name": "PIR kiểm thử", "source_chip_id": "fixture_pir", "occurred_at": "2026-09-16T18:30:00Z", "duration_ms": 1000 }
+  ]
+}

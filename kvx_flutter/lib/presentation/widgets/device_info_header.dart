@@ -150,6 +150,8 @@ class DeviceInfoHeader extends StatelessWidget {
 
   IconData _getDeviceIcon(DeviceType type) {
     switch (type) {
+      case DeviceType.buzzer:
+        return Icons.notifications_active;
       case DeviceType.pir:
         return Icons.sensors;
       case DeviceType.switchDevice:

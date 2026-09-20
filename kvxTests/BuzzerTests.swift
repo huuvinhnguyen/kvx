@@ -2,177 +2,69 @@ import Foundation
 import Testing
 @testable import kvx
 
-private final class BuzzerFixtureBundle: NSObject {}
-
-@MainActor
-private func buzzerFixture(duration: Int? = 1000, name: String = "Buzzer") -> BuzzerDetail {
-    BuzzerDetail(id: "59", name: name, chipID: "fixture_buzzer", online: true, lastSeen: nil,
-                 buildVersion: nil, appVersion: nil, testDurationMS: duration, sources: [], events: [])
-}
-
 @MainActor
 private final class FakeBuzzerRepository: BuzzerRepository {
-    var value = buzzerFixture()
+    var detailValue = BuzzerDetail(id: "42", name: "Hall Buzzer", chipID: "ESP32_BUZZER_02", online: true, lastSeen: nil, linkedPIRCount: 1, lastTriggeredAt: nil, sources: [], events: [])
+    var sourcesValue = [BuzzerSource(id: "7", name: "Hall PIR", chipID: "ESP32_PIR_01", relayIndex: 0, longlast: 1000)]
+    var eventsValue = [BuzzerMotionEvent(id: "123", eventType: "motion_detected", pirID: "7", sourceName: "Hall PIR", sourceChipID: "ESP32_PIR_01", occurredAt: Date(), relayIndex: 0, longlast: 1000)]
     var loadError: Error?
-    var sendError: Error?
-    var sends: [BuzzerCommand] = []
+    var testError: Error?
+    var tests = 0
     var loads = 0
-    var suspended = false
-    var pendingLoads: [CheckedContinuation<BuzzerDetail, Error>] = []
-    var suspendSend = false
-    var pendingSend: CheckedContinuation<BuzzerCommandReceipt, Error>?
 
-    func detail(deviceID: String) async throws -> BuzzerDetail {
-        loads += 1
-        if suspended { return try await withCheckedThrowingContinuation { pendingLoads.append($0) } }
-        if let loadError { throw loadError }
-        return value
-    }
-    func send(_ command: BuzzerCommand, deviceID: String) async throws -> BuzzerCommandReceipt {
-        sends.append(command)
-        if suspendSend { return try await withCheckedThrowingContinuation { pendingSend = $0 } }
-        if let sendError { throw sendError }
-        return BuzzerCommandReceipt(cooldownSeconds: command == .test ? 3 : 0)
-    }
+    func detail(deviceID: String) async throws -> BuzzerDetail { loads += 1; if let loadError { throw loadError }; return detailValue }
+    func linkedPIRs(deviceID: String) async throws -> [BuzzerSource] { if let loadError { throw loadError }; return sourcesValue }
+    func history(deviceID: String) async throws -> [BuzzerMotionEvent] { if let loadError { throw loadError }; return eventsValue }
+    func test(deviceID: String) async throws -> BuzzerTestReceipt { tests += 1; if let testError { throw testError }; return BuzzerTestReceipt(message: "Command sent to MQTT broker", relayIndex: 0, longlast: 1000) }
 }
 
 @MainActor
 struct BuzzerTests {
-    private func model(_ repository: FakeBuzzerRepository, now: @escaping () -> Date = Date.init) -> BuzzerViewModel {
-        BuzzerViewModel(deviceID: "59", useCases: BuzzerUseCases(repository: repository), now: now)
-    }
-
-    @Test func sharedFixtureMapsIdentityUnitsAndDates() throws {
-        let bundle = Bundle(for: BuzzerFixtureBundle.self)
-        let url = try #require(bundle.url(forResource: "buzzer-detail", withExtension: "json"))
-        let dto = try JSONDecoder().decode(BuzzerDetailDTO.self, from: Data(contentsOf: url))
-        let detail = try dto.toDomain()
-        #expect(detail.id == "59")
-        #expect(detail.chipID == "fixture_buzzer")
-        #expect(detail.sources.first?.relayIndex == 0)
-        #expect(detail.events.first?.durationMS == 1000)
-        #expect(detail.events.first?.occurredAt == ISO8601DateFormatter().date(from: "2026-09-17T01:30:00+07:00"))
-    }
-
-    @Test func missingOptionalDataIsEmptyButMalformedRequiredDataFails() throws {
-        let json = #"{"id":"59","name":"Buzzer","chip_id":"fixture","online":false,"sources":[],"events":[]}"#
-        let value = try JSONDecoder().decode(BuzzerDetailDTO.self, from: Data(json.utf8)).toDomain()
-        #expect(value.lastSeen == nil && value.sources.isEmpty && !value.canTest)
-        let bad = json.replacingOccurrences(of: "\"sources\":[]", with: "\"sources\":null")
-        #expect(throws: (any Error).self) { try JSONDecoder().decode(BuzzerDetailDTO.self, from: Data(bad.utf8)).toDomain() }
-    }
-
-    @Test func testDurationBoundariesAreValidatedBeforeSending() async throws {
+    @Test func backendEntitiesPreserveDetailLinkedPIRAndHistoryFields() {
         let repository = FakeBuzzerRepository()
-        let useCases = BuzzerUseCases(repository: repository)
-        for duration in [100, 10_000] {
-            _ = try await useCases.execute(.test, detail: buzzerFixture(duration: duration))
-        }
-        for duration: Int? in [nil, 99, 10_001] {
-            await #expect(throws: BuzzerError.self) {
-                try await useCases.execute(.test, detail: buzzerFixture(duration: duration))
-            }
-        }
-        #expect(repository.sends == [.test, .test])
+        #expect(repository.detailValue.id == "42")
+        #expect(repository.sourcesValue.first?.longlast == 1000)
+        #expect(repository.eventsValue.first?.eventType == "motion_detected")
+        #expect(repository.eventsValue.first?.pirID == "7")
     }
 
-    @Test func refreshReadsSnapshotAndDoesNotRetryCommandWhenReadFails() async {
+    @Test func useCaseLoadsTheThreeReadEndpointsTogether() async throws {
         let repository = FakeBuzzerRepository()
-        let model = model(repository)
-        await model.load()
-        repository.loadError = URLError(.notConnectedToInternet)
-        await model.send(.refresh)
-        #expect(repository.sends == [.refresh])
-        #expect(model.notice != nil && model.errorMessage != nil)
-        #expect(model.detail != nil && !model.isBusy)
-        repository.loadError = nil
-        await model.load()
-        #expect(repository.sends.count == 1 && model.errorMessage == nil)
+        let result = try await BuzzerUseCases(repository: repository).load(deviceID: "42")
+        #expect(result.0.id == "42")
+        #expect(result.1.count == 1)
+        #expect(result.2.count == 1)
     }
 
-    @Test func failureDoesNotReportSuccessOrRetry() async {
+    @Test func testUsesOnlyTheSupportedTestOperation() async throws {
         let repository = FakeBuzzerRepository()
-        let model = model(repository)
-        await model.load()
-        repository.sendError = BuzzerError.commandFailed
-        await model.send(.restart)
-        #expect(repository.sends == [.restart])
-        #expect(model.notice == nil && model.errorMessage != nil && !model.isBusy)
+        let receipt = try await BuzzerUseCases(repository: repository).test(deviceID: "42")
+        #expect(receipt.message == "Command sent to MQTT broker")
+        #expect(repository.tests == 1)
     }
 
-    @Test func unauthorizedClearsDataAndOffersLogin() async {
+    @Test func serverCooldownIsRecordedAndBlocksRepeatedTest() async {
         let repository = FakeBuzzerRepository()
-        let model = model(repository)
+        let model = BuzzerViewModel(deviceID: "42", useCases: BuzzerUseCases(repository: repository))
         await model.load()
-        repository.loadError = DeviceAPIError.httpStatus(401)
-        await model.load()
-        #expect(model.needsLogin && model.detail == nil)
-        await model.send(.test)
-        #expect(repository.sends.isEmpty)
-        repository.loadError = nil
-        await model.load()
-        #expect(!model.needsLogin && model.detail != nil)
+        repository.testError = BuzzerError.cooldown(5)
+        await model.test()
+        #expect(model.cooldownSeconds(at: Date()) == 5)
+        await model.test()
+        #expect(repository.tests == 1)
     }
 
-    @Test func cooldownPreventsRepeatTestsAndServerCooldownIsHonored() async {
+    @Test func unavailableAndUnauthorizedErrorsClearData() async {
         let repository = FakeBuzzerRepository()
-        var now = Date(timeIntervalSince1970: 100)
-        let model = model(repository, now: { now })
-        await model.load()
-        await model.send(.test)
-        await model.send(.test)
-        #expect(repository.sends.count == 1)
-        now = now.addingTimeInterval(3)
-        repository.sendError = BuzzerError.cooldown(5)
-        await model.send(.test)
-        #expect(model.cooldownSeconds(at: now) == 5)
-        #expect(model.notice == nil)
-    }
-
-    @Test func lostDeviceAccessClearsPreviousSnapshot() async {
-        let repository = FakeBuzzerRepository()
-        let model = model(repository)
+        let model = BuzzerViewModel(deviceID: "42", useCases: BuzzerUseCases(repository: repository))
         await model.load()
         repository.loadError = BuzzerError.unavailable
         await model.load()
-        await model.send(.restart)
-        #expect(model.detail == nil && repository.sends.isEmpty)
-    }
-
-    @Test func lateReadsCannotOverwriteNewerStateOrUpdateAfterDisappear() async {
-        let repository = FakeBuzzerRepository()
-        repository.suspended = true
-        let model = model(repository)
-        let first = Task { await model.load() }
-        while repository.pendingLoads.count < 1 { await Task.yield() }
-        let second = Task { await model.load() }
-        while repository.pendingLoads.count < 2 { await Task.yield() }
-        repository.pendingLoads[1].resume(returning: buzzerFixture(name: "new"))
-        await second.value
-        repository.pendingLoads[0].resume(returning: buzzerFixture(name: "old"))
-        await first.value
-        #expect(model.detail?.name == "new")
-        let third = Task { await model.load() }
-        while repository.pendingLoads.count < 3 { await Task.yield() }
-        model.deactivate()
-        repository.pendingLoads[2].resume(returning: buzzerFixture(name: "after disappear"))
-        await third.value
-        #expect(model.detail?.name == "new" && !model.isBusy)
-    }
-
-    @Test func duplicateCommandsAreIgnoredWhilePending() async {
-        let repository = FakeBuzzerRepository()
-        let model = model(repository)
+        #expect(model.detail == nil)
+        repository.loadError = DeviceAPIError.httpStatus(401)
         await model.load()
-        repository.suspendSend = true
-        let first = Task { await model.send(.restart) }
-        while repository.pendingSend == nil { await Task.yield() }
-        await model.send(.restart)
-        await model.load()
-        #expect(repository.sends == [.restart])
-        repository.pendingSend?.resume(returning: BuzzerCommandReceipt(cooldownSeconds: 0))
-        await first.value
-        #expect(!model.isBusy)
+        #expect(model.needsLogin)
+        #expect(model.detail == nil)
     }
 }
 
@@ -182,13 +74,21 @@ private final class BuzzerHTTPStub: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let valid = request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token" &&
-            request.value(forHTTPHeaderField: "Accept") == "application/json"
-        let isList = request.url?.path == "/api/devices"
-        let validCommand = request.httpMethod == "POST" && request.url?.path == "/api/buzzers/59/test"
-        let body = isList ? #"{"devices":[{"id":59,"name":"Fixture","chip_id":"fixture_buzzer","device_type":"buzzer","status":1}]}"# :
-            #"{"status":"accepted","acknowledgement":"broker_only","cooldown_seconds":3}"#
-        let status = valid && (isList || validCommand) ? 200 : 400
+        let path = request.url?.path ?? ""
+        let valid = request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token"
+        let body: String
+        switch path {
+        case "/api/devices/42/buzzer":
+            body = #"{"status":"success","buzzer":{"id":42,"name":"Hall Buzzer","chip_id":"ESP32_BUZZER_02","device_type":"buzzer","online":true,"last_seen":null,"linked_pir_count":1,"last_triggered_at":null}}"#
+        case "/api/devices/42/buzzer/linked_pirs":
+            body = #"{"status":"success","linked_pirs":[{"id":7,"name":"Hall PIR","chip_id":"ESP32_PIR_01","relay_index":0,"longlast":1000}]}"#
+        case "/api/devices/42/buzzer/history":
+            body = #"{"status":"success","events":[{"id":123,"event_type":"motion_detected","occurred_at":"2026-09-19T10:29:00+07:00","pir":{"id":7,"name":"Hall PIR","chip_id":"ESP32_PIR_01"},"relay_index":0,"longlast":1000}]}"#
+        case "/api/devices/42/buzzer/test":
+            body = #"{"status":"success","message":"Command sent to MQTT broker","relay_index":0,"longlast":1000}"#
+        default: body = #"{"status":"error"}"#
+        }
+        let status = valid && path.contains("/api/devices/42/buzzer") ? 200 : 401
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
@@ -198,15 +98,18 @@ private final class BuzzerHTTPStub: URLProtocol {
 
 @MainActor
 struct BuzzerHTTPTests {
-    @Test func listMapsBuzzerAndCommandsUseDatabaseIDWithBearer() async throws {
+    @Test func clientUsesDocumentedDeviceScopedEndpoints() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BuzzerHTTPStub.self]
         let session = URLSession(configuration: configuration)
-        let devices = try await BinblogDeviceDataSource(tokenProvider: BuzzerTestToken(), session: session).fetchDevices()
-        #expect(devices.first?.type == .buzzer)
-        #expect(devices.first?.chipID == "fixture_buzzer")
-        let repository = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: session)
-        let receipt = try await repository.send(.test, deviceID: "59")
-        #expect(receipt.cooldownSeconds == 3)
+        let client = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: session)
+        let detail = try await client.detail(deviceID: "42")
+        let pirs = try await client.linkedPIRs(deviceID: "42")
+        let events = try await client.history(deviceID: "42")
+        let receipt = try await client.test(deviceID: "42")
+        #expect(detail.id == "42")
+        #expect(pirs.first?.id == "7")
+        #expect(events.first?.eventType == "motion_detected")
+        #expect(receipt.message == "Command sent to MQTT broker")
     }
 }

@@ -27,9 +27,9 @@ class BinblogDeviceDataSource implements DeviceDataSource {
   void close() => _client.close();
 
   Future<Map<String, dynamic>> getJson(
-    String path,
-    Map<String, String> query,
-  ) async {
+    String path, [
+    Map<String, String> query = const {},
+  ]) async {
     final token = await _token();
     final response = await _client
         .get(
@@ -50,7 +50,7 @@ class BinblogDeviceDataSource implements DeviceDataSource {
     return _decodeObject(response.body);
   }
 
-  Future<Map<String, dynamic>> postJson(String path) async {
+  Future<Map<String, dynamic>> postJson(String path, {String? body}) async {
     final token = await _token();
     final response = await _client
         .post(
@@ -60,7 +60,7 @@ class BinblogDeviceDataSource implements DeviceDataSource {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
           },
-          body: '{}',
+          body: body,
         )
         .timeout(const Duration(seconds: 20));
     if (response.statusCode == 401) _accessToken = null;

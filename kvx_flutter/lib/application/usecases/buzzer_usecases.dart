@@ -5,21 +5,16 @@ class BuzzerUseCases {
   final BuzzerRepository repository;
   const BuzzerUseCases(this.repository);
 
-  Future<BuzzerDetail> load(String deviceId) async {
-    final detail = await repository.load(deviceId);
-    if (detail.id != deviceId) {
-      throw const BuzzerFailure(BuzzerFailureKind.invalidData);
-    }
-    return detail;
+  Future<(BuzzerDetail, List<BuzzerSource>, List<BuzzerMotionEvent>)> load(String deviceId) async {
+    final results = await Future.wait<Object>([
+      repository.load(deviceId),
+      repository.loadLinkedPirs(deviceId),
+      repository.loadHistory(deviceId),
+    ]);
+    final detail = results[0] as BuzzerDetail;
+    if (detail.id != deviceId) throw const BuzzerFailure(BuzzerFailureKind.invalidData);
+    return (detail, results[1] as List<BuzzerSource>, results[2] as List<BuzzerMotionEvent>);
   }
 
-  Future<BuzzerCommandReceipt> execute(
-    BuzzerDetail detail,
-    BuzzerCommand command,
-  ) {
-    if (command == BuzzerCommand.test && !detail.canTest) {
-      throw const BuzzerFailure(BuzzerFailureKind.configuration);
-    }
-    return repository.send(detail.id, command);
-  }
+  Future<BuzzerTestReceipt> test(String deviceId) => repository.test(deviceId);
 }

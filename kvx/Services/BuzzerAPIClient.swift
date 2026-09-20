@@ -6,119 +6,112 @@ struct BuzzerAPIClient: BuzzerRepository {
     var baseURL = URL(string: "https://khuonvien.vn")!
 
     func detail(deviceID: String) async throws -> BuzzerDetail {
-        let data = try await request(deviceID: deviceID, command: nil)
+        let body = try await get(deviceID: deviceID, suffix: "")
         do {
-            return try JSONDecoder().decode(BuzzerDetailDTO.self, from: data).toDomain()
+            return try BuzzerDetailDTO.fromDetail(body).toDomain()
         } catch { throw BuzzerError.invalidResponse }
     }
 
-    func send(_ command: BuzzerCommand, deviceID: String) async throws -> BuzzerCommandReceipt {
-        let data = try await request(deviceID: deviceID, command: command)
-        guard let receipt = try? JSONDecoder().decode(ReceiptDTO.self, from: data),
-              receipt.status == "accepted", receipt.acknowledgement == "broker_only",
-              (0...60).contains(receipt.cooldown_seconds ?? 0) else { throw BuzzerError.commandFailed }
-        return BuzzerCommandReceipt(cooldownSeconds: command == .test ? max(3, receipt.cooldown_seconds ?? 3) : 0)
+    func linkedPIRs(deviceID: String) async throws -> [BuzzerSource] {
+        let body = try await get(deviceID: deviceID, suffix: "/linked_pirs")
+        do { return try BuzzerLinkedPIRDTO.from(body).map { try $0.toDomain() } }
+        catch { throw BuzzerError.invalidResponse }
     }
 
-    private func request(deviceID: String, command: BuzzerCommand?) async throws -> Data {
-        guard !deviceID.isEmpty, deviceID.allSatisfy({ $0.isASCII && $0.isNumber }) else { throw BuzzerError.unavailable }
+    func history(deviceID: String) async throws -> [BuzzerMotionEvent] {
+        let body = try await get(deviceID: deviceID, suffix: "/history")
+        do { return try BuzzerHistoryEventDTO.from(body).map { try $0.toDomain() } }
+        catch { throw BuzzerError.invalidResponse }
+    }
+
+    func test(deviceID: String) async throws -> BuzzerTestReceipt {
+        let data = try await request(deviceID: deviceID, suffix: "/test", method: "POST")
+        do {
+            let wrapper = try JSONDecoder().decode(BuzzerTestResponseDTO.self, from: data)
+            guard wrapper.status == "success" else { throw BuzzerError.commandFailed }
+            return BuzzerTestReceipt(message: wrapper.message, relayIndex: wrapper.relay_index, longlast: wrapper.longlast)
+        } catch let error as BuzzerError { throw error }
+        catch { throw BuzzerError.commandFailed }
+    }
+
+    private func get(deviceID: String, suffix: String) async throws -> Data {
+        try await request(deviceID: deviceID, suffix: suffix, method: "GET")
+    }
+
+    private func request(deviceID: String, suffix: String, method: String) async throws -> Data {
+        guard !deviceID.isEmpty else { throw BuzzerError.unavailable }
         guard let token = tokenProvider.accessToken, !token.isEmpty else { throw DeviceAPIError.missingAccessToken }
-        var url = baseURL.appendingPathComponent("api/buzzers/\(deviceID)")
-        if let command { url.appendPathComponent(command.rawValue) }
+        let url = baseURL.appendingPathComponent("api/devices/\(deviceID)/buzzer\(suffix)")
         var request = URLRequest(url: url, timeoutInterval: 20)
-        request.httpMethod = command == nil ? "GET" : "POST"
+        request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if command != nil {
+        if method == "POST" {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = Data("{}".utf8)
+            request.httpBody = nil
         }
         let data: Data
         let response: URLResponse
         do { (data, response) = try await session.data(for: request) }
         catch {
-            if command != nil { throw BuzzerError.commandFailed }
+            if method == "POST" { throw BuzzerError.commandFailed }
             throw error
         }
         guard let response = response as? HTTPURLResponse else { throw BuzzerError.invalidResponse }
         switch response.statusCode {
         case 200: return data
         case 401: throw DeviceAPIError.httpStatus(401)
-        case 403, 404: throw BuzzerError.unavailable
+        case 404: throw BuzzerError.unavailable
         case 422: throw BuzzerError.invalidConfiguration
         case 429:
-            let seconds = (try? JSONDecoder().decode(CooldownDTO.self, from: data).retry_after_seconds) ?? 3
+            let seconds = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data).retry_after_seconds) ?? 3
             throw BuzzerError.cooldown(min(60, max(1, seconds)))
-        default:
-            if command != nil { throw BuzzerError.commandFailed }
-            throw DeviceAPIError.httpStatus(response.statusCode)
+        case 503: throw BuzzerError.commandFailed
+        default: throw DeviceAPIError.httpStatus(response.statusCode)
         }
     }
 }
 
-private struct ReceiptDTO: Decodable {
-    let status: String
-    let acknowledgement: String
-    let cooldown_seconds: Int?
-}
-
-private struct CooldownDTO: Decodable { let retry_after_seconds: Int }
+private struct ErrorResponseDTO: Decodable { let retry_after_seconds: Int? }
 
 struct BuzzerDetailDTO: Decodable {
-    let id: String
-    let name: String
-    let chip_id: String
-    let online: Bool
-    let last_seen: String?
-    let build_version: String?
-    let app_version: String?
-    let test_duration_ms: Int?
-    let sources: [Source]
-    let events: [Event]
-
-    struct Source: Decodable {
-        let id: String
+    let status: String
+    let buzzer: Buzzer
+    struct Buzzer: Decodable {
+        let id: Int
         let name: String
         let chip_id: String
-        let relay_index: Int
-        let duration_ms: Int?
+        let device_type: String
+        let online: Bool
+        let last_seen: String?
+        let linked_pir_count: Int
+        let last_triggered_at: String?
     }
-    struct Event: Decodable {
-        let id: String
-        let source_id: String
-        let source_name: String
-        let source_chip_id: String
-        let occurred_at: String
-        let duration_ms: Int?
-    }
-
+    static func fromDetail(_ data: Data) throws -> BuzzerDetailDTO { try JSONDecoder().decode(Self.self, from: data) }
     func toDomain() throws -> BuzzerDetail {
-        guard !id.isEmpty, !chip_id.isEmpty, events.count <= 20,
-              Set(sources.map(\.id)).count == sources.count,
-              Set(events.map(\.id)).count == events.count else { throw BuzzerError.invalidResponse }
-        let mappedSources = try sources.map { source in
-            guard !source.id.isEmpty, !source.chip_id.isEmpty, source.relay_index >= 0,
-                  (source.duration_ms ?? 0) >= 0 else { throw BuzzerError.invalidResponse }
-            return BuzzerSource(id: source.id, name: source.name, chipID: source.chip_id,
-                                relayIndex: source.relay_index, durationMS: source.duration_ms)
-        }
-        let mappedEvents = try events.map { event in
-            guard let date = Self.date(event.occurred_at), !event.id.isEmpty,
-                  sources.contains(where: { $0.id == event.source_id && $0.chip_id == event.source_chip_id }),
-                  (event.duration_ms ?? 0) >= 0 else { throw BuzzerError.invalidResponse }
-            return BuzzerMotionEvent(id: event.id, sourceID: event.source_id, sourceName: event.source_name,
-                                     sourceChipID: event.source_chip_id, occurredAt: date, durationMS: event.duration_ms)
-        }
-        return BuzzerDetail(id: id, name: name, chipID: chip_id, online: online,
-                            lastSeen: last_seen.flatMap(Self.date), buildVersion: build_version,
-                            appVersion: app_version, testDurationMS: test_duration_ms,
-                            sources: mappedSources, events: mappedEvents)
+        guard status == "success", device_typeValid else { throw BuzzerError.invalidResponse }
+        return BuzzerDetail(id: String(buzzer.id), name: buzzer.name, chipID: buzzer.chip_id,
+                            online: buzzer.online, lastSeen: Self.date(buzzer.last_seen),
+                            linkedPIRCount: buzzer.linked_pir_count,
+                            lastTriggeredAt: Self.date(buzzer.last_triggered_at), sources: [], events: [])
     }
-
-    private static func date(_ value: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        if let result = formatter.date(from: value) { return result }
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value)
-    }
+    private var device_typeValid: Bool { buzzer.device_type == "buzzer" && buzzer.linked_pir_count >= 0 }
+    static func date(_ value: String?) -> Date? { value.flatMap { ISO8601DateFormatter().date(from: $0) } }
 }
+
+private struct BuzzerLinkedPIRResponseDTO: Decodable { let status: String; let linked_pirs: [BuzzerLinkedPIRDTO] }
+struct BuzzerLinkedPIRDTO: Decodable {
+    let id: Int; let name: String; let chip_id: String; let relay_index: Int; let longlast: Int?
+    static func from(_ data: Data) throws -> [Self] { let wrapper = try JSONDecoder().decode(BuzzerLinkedPIRResponseDTO.self, from: data); guard wrapper.status == "success" else { throw BuzzerError.invalidResponse }; return wrapper.linked_pirs }
+    func toDomain() throws -> BuzzerSource { guard relay_index >= 0, longlast ?? 0 >= 0 else { throw BuzzerError.invalidResponse }; return BuzzerSource(id: String(id), name: name, chipID: chip_id, relayIndex: relay_index, longlast: longlast) }
+}
+
+private struct BuzzerHistoryResponseDTO: Decodable { let status: String; let events: [BuzzerHistoryEventDTO] }
+struct BuzzerHistoryEventDTO: Decodable {
+    let id: Int; let event_type: String; let occurred_at: String; let pir: PIRDTO; let relay_index: Int; let longlast: Int?
+    struct PIRDTO: Decodable { let id: Int; let name: String; let chip_id: String }
+    static func from(_ data: Data) throws -> [Self] { let wrapper = try JSONDecoder().decode(BuzzerHistoryResponseDTO.self, from: data); guard wrapper.status == "success", wrapper.events.count <= 20 else { throw BuzzerError.invalidResponse }; return wrapper.events }
+    func toDomain() throws -> BuzzerMotionEvent { guard event_type == "motion_detected", relay_index >= 0, let date = ISO8601DateFormatter().date(from: occurred_at) else { throw BuzzerError.invalidResponse }; return BuzzerMotionEvent(id: String(id), eventType: event_type, pirID: String(pir.id), sourceName: pir.name, sourceChipID: pir.chip_id, occurredAt: date, relayIndex: relay_index, longlast: longlast) }
+}
+
+private struct BuzzerTestResponseDTO: Decodable { let status: String; let message: String; let relay_index: Int?; let longlast: Int? }

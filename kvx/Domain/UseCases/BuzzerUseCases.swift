@@ -3,14 +3,14 @@ import Foundation
 struct BuzzerUseCases {
     let repository: any BuzzerRepository
 
-    func load(deviceID: String) async throws -> BuzzerDetail {
-        let detail = try await repository.detail(deviceID: deviceID)
-        guard detail.id == deviceID else { throw BuzzerError.invalidResponse }
-        return detail
+    func load(deviceID: String) async throws -> (BuzzerDetail, [BuzzerSource], [BuzzerMotionEvent]) {
+        async let detail = repository.detail(deviceID: deviceID)
+        async let sources = repository.linkedPIRs(deviceID: deviceID)
+        async let events = repository.history(deviceID: deviceID)
+        return try await (detail, sources, events)
     }
 
-    func execute(_ command: BuzzerCommand, detail: BuzzerDetail) async throws -> BuzzerCommandReceipt {
-        if command == .test && !detail.canTest { throw BuzzerError.invalidConfiguration }
-        return try await repository.send(command, deviceID: detail.id)
+    func test(deviceID: String) async throws -> BuzzerTestReceipt {
+        try await repository.test(deviceID: deviceID)
     }
 }

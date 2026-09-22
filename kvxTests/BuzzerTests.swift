@@ -19,6 +19,17 @@ private final class FakeBuzzerRepository: BuzzerRepository {
 }
 
 @MainActor
+private final class DeferredBuzzerRepository: BuzzerRepository {
+    var pending: [CheckedContinuation<BuzzerDetail, Error>] = []
+    func detail(deviceID: String) async throws -> BuzzerDetail {
+        try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+    func linkedPIRs(deviceID: String) async throws -> [BuzzerSource] { [] }
+    func history(deviceID: String) async throws -> [BuzzerMotionEvent] { [] }
+    func test(deviceID: String) async throws -> BuzzerTestReceipt { BuzzerTestReceipt(message: "sent", relayIndex: nil, longlast: nil) }
+}
+
+@MainActor
 struct BuzzerTests {
     @Test func backendEntitiesPreserveDetailLinkedPIRAndHistoryFields() {
         let repository = FakeBuzzerRepository()
@@ -54,6 +65,57 @@ struct BuzzerTests {
         #expect(repository.tests == 1)
     }
 
+    @Test func successfulTestStartsLocalCooldownAndReloadDoesNotReplayPost() async {
+        let repository = FakeBuzzerRepository()
+        var currentTime = Date()
+        let model = BuzzerViewModel(deviceID: "42", useCases: BuzzerUseCases(repository: repository), now: { currentTime })
+        await model.load()
+        await model.test()
+        #expect(model.cooldownSeconds(at: currentTime) == 3)
+        #expect(repository.tests == 1)
+        await model.load()
+        #expect(repository.tests == 1)
+        repository.testError = BuzzerError.cooldown(8)
+        currentTime = currentTime.addingTimeInterval(4)
+        await model.test()
+        #expect(model.cooldownSeconds(at: currentTime) == 8)
+    }
+
+    @Test func staleLoadCannotOverwriteNewerState() async {
+        let repository = DeferredBuzzerRepository()
+        let model = BuzzerViewModel(deviceID: "42", useCases: BuzzerUseCases(repository: repository))
+        let old = Task { await model.load() }
+        while repository.pending.count < 1 { await Task.yield() }
+        let newer = Task { await model.load() }
+        while repository.pending.count < 2 { await Task.yield() }
+        let fresh = BuzzerDetail(id: "42", name: "new", chipID: "chip", online: true, lastSeen: nil, linkedPIRCount: 0, lastTriggeredAt: nil, sources: [], events: [])
+        let stale = BuzzerDetail(id: "42", name: "old", chipID: "chip", online: true, lastSeen: nil, linkedPIRCount: 0, lastTriggeredAt: nil, sources: [], events: [])
+        repository.pending[1].resume(returning: fresh)
+        await newer.value
+        repository.pending[0].resume(returning: stale)
+        await old.value
+        #expect(model.detail?.name == "new")
+    }
+
+    @Test func detailTimestampsRejectMalformedValuesAndAcceptNull() throws {
+        func decode(_ seen: String, _ triggered: String) throws -> BuzzerDetail {
+            let json = """
+            {"status":"success","buzzer":{"id":42,"name":"Buzzer","chip_id":"chip","device_type":"buzzer","online":true,"last_seen":\(seen),"linked_pir_count":0,"last_triggered_at":\(triggered)}}
+            """
+            return try BuzzerDetailDTO.fromDetail(Data(json.utf8)).toDomain()
+        }
+        let empty = try decode("null", "null")
+        #expect(empty.lastSeen == nil && empty.lastTriggeredAt == nil)
+        #expect(throws: BuzzerError.self) { try decode("\"bad\"", "null") }
+        #expect(throws: BuzzerError.self) { try decode("null", "\"bad\"") }
+    }
+
+    @Test func emptyLinkedPIRsAndHistoryAreAccepted() throws {
+        let pirs = try BuzzerLinkedPIRDTO.from(Data(#"{"status":"success","linked_pirs":[]}"#.utf8))
+        let events = try BuzzerHistoryEventDTO.from(Data(#"{"status":"success","events":[]}"#.utf8))
+        #expect(pirs.isEmpty && events.isEmpty)
+    }
+
     @Test func unavailableAndUnauthorizedErrorsClearData() async {
         let repository = FakeBuzzerRepository()
         let model = BuzzerViewModel(deviceID: "42", useCases: BuzzerUseCases(repository: repository))
@@ -76,6 +138,8 @@ private final class BuzzerHTTPStub: URLProtocol {
     override func startLoading() {
         let path = request.url?.path ?? ""
         let valid = request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token"
+            && request.httpMethod == (path.hasSuffix("/test") ? "POST" : "GET")
+            && (!path.hasSuffix("/test") || request.httpBody == nil)
         let body: String
         switch path {
         case "/api/devices/42/buzzer":
@@ -88,8 +152,10 @@ private final class BuzzerHTTPStub: URLProtocol {
             body = #"{"status":"success","message":"Command sent to MQTT broker","relay_index":0,"longlast":1000}"#
         default: body = #"{"status":"error"}"#
         }
-        let status = valid && path.contains("/api/devices/42/buzzer") ? 200 : 401
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        let scenario = path.split(separator: "/").dropFirst(2).first.flatMap { Int($0) }.flatMap { [401, 422, 429, 503].contains($0) ? $0 : nil }
+        let status = valid ? (scenario ?? 200) : 401
+        let headers = status == 429 ? ["Retry-After": "7"] : nil
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
@@ -111,5 +177,20 @@ struct BuzzerHTTPTests {
         #expect(pirs.first?.id == "7")
         #expect(events.first?.eventType == "motion_detected")
         #expect(receipt.message == "Command sent to MQTT broker")
+    }
+
+    @Test func httpErrorsAndRetryAfterAreMapped() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BuzzerHTTPStub.self]
+        let client = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: URLSession(configuration: configuration))
+        do { _ = try await client.detail(deviceID: "401"); Issue.record("Expected 401") }
+        catch DeviceAPIError.httpStatus(401) {} catch { Issue.record("Wrong 401 error: \(error)") }
+        do { _ = try await client.test(deviceID: "422"); Issue.record("Expected 422") }
+        catch BuzzerError.invalidConfiguration {} catch { Issue.record("Wrong 422 error: \(error)") }
+        do { _ = try await client.test(deviceID: "429"); Issue.record("Expected 429") }
+        catch BuzzerError.cooldown(let seconds) { #expect(seconds == 7) }
+        catch { Issue.record("Wrong 429 error: \(error)") }
+        do { _ = try await client.test(deviceID: "503"); Issue.record("Expected 503") }
+        catch BuzzerError.commandFailed {} catch { Issue.record("Wrong 503 error: \(error)") }
     }
 }

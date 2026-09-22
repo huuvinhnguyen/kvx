@@ -64,7 +64,8 @@ struct BuzzerAPIClient: BuzzerRepository {
         case 404: throw BuzzerError.unavailable
         case 422: throw BuzzerError.invalidConfiguration
         case 429:
-            let seconds = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data).retry_after_seconds) ?? 3
+            let header = response.value(forHTTPHeaderField: "Retry-After").flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            let seconds = header ?? (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data).retry_after_seconds) ?? 3
             throw BuzzerError.cooldown(min(60, max(1, seconds)))
         case 503: throw BuzzerError.commandFailed
         default: throw DeviceAPIError.httpStatus(response.statusCode)
@@ -90,13 +91,19 @@ struct BuzzerDetailDTO: Decodable {
     static func fromDetail(_ data: Data) throws -> BuzzerDetailDTO { try JSONDecoder().decode(Self.self, from: data) }
     func toDomain() throws -> BuzzerDetail {
         guard status == "success", device_typeValid else { throw BuzzerError.invalidResponse }
+        let lastSeen = try Self.date(buzzer.last_seen)
+        let lastTriggeredAt = try Self.date(buzzer.last_triggered_at)
         return BuzzerDetail(id: String(buzzer.id), name: buzzer.name, chipID: buzzer.chip_id,
-                            online: buzzer.online, lastSeen: Self.date(buzzer.last_seen),
+                            online: buzzer.online, lastSeen: lastSeen,
                             linkedPIRCount: buzzer.linked_pir_count,
-                            lastTriggeredAt: Self.date(buzzer.last_triggered_at), sources: [], events: [])
+                            lastTriggeredAt: lastTriggeredAt, sources: [], events: [])
     }
     private var device_typeValid: Bool { buzzer.device_type == "buzzer" && buzzer.linked_pir_count >= 0 }
-    static func date(_ value: String?) -> Date? { value.flatMap { ISO8601DateFormatter().date(from: $0) } }
+    static func date(_ value: String?) throws -> Date? {
+        guard let value else { return nil }
+        guard let date = ISO8601DateFormatter().date(from: value) else { throw BuzzerError.invalidResponse }
+        return date
+    }
 }
 
 private struct BuzzerLinkedPIRResponseDTO: Decodable { let status: String; let linked_pirs: [BuzzerLinkedPIRDTO] }

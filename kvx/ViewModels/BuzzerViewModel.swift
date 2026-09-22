@@ -62,6 +62,7 @@ final class BuzzerViewModel {
         do {
             let receipt = try await useCases.test(deviceID: deviceID)
             guard generation == request, !Task.isCancelled else { return }
+            cooldownUntil = now().addingTimeInterval(3)
             notice = receipt.message.isEmpty ? "Đã gửi lệnh đến MQTT broker; chưa có xác nhận từ Buzzer." : receipt.message
             await loadAfterTest(request: request)
         } catch {

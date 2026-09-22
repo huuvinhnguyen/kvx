@@ -5,8 +5,10 @@ import Observation
 @Observable
 final class BuzzerViewModel {
     private(set) var detail: BuzzerDetail?
+    private(set) var sources: [BuzzerSource] = []
+    private(set) var events: [BuzzerMotionEvent] = []
     private(set) var isLoading = false
-    private(set) var pendingCommand: BuzzerCommand?
+    private(set) var isTesting = false
     private(set) var errorMessage: String?
     private(set) var notice: String?
     private(set) var needsLogin = false
@@ -22,14 +24,14 @@ final class BuzzerViewModel {
         self.now = now
     }
 
-    var isBusy: Bool { isLoading || pendingCommand != nil }
+    var isBusy: Bool { isLoading || isTesting }
 
     func cooldownSeconds(at date: Date) -> Int {
         max(0, Int(ceil(cooldownUntil?.timeIntervalSince(date) ?? 0)))
     }
 
     func load() async {
-        guard pendingCommand == nil else { return }
+        guard !isTesting else { return }
         generation += 1
         let request = generation
         isLoading = true
@@ -37,9 +39,11 @@ final class BuzzerViewModel {
         notice = nil
         defer { if generation == request { isLoading = false } }
         do {
-            let result = try await useCases.load(deviceID: deviceID)
+            let (detail, sources, events) = try await useCases.load(deviceID: deviceID)
             guard generation == request, !Task.isCancelled else { return }
-            detail = result
+            self.detail = detail
+            self.sources = sources
+            self.events = events
             needsLogin = false
         } catch {
             guard generation == request, !Task.isCancelled else { return }
@@ -47,29 +51,33 @@ final class BuzzerViewModel {
         }
     }
 
-    func send(_ command: BuzzerCommand) async {
-        guard !isBusy, !needsLogin, let detail else { return }
-        if command == .test && cooldownSeconds(at: now()) > 0 { return }
+    func test() async {
+        guard !isBusy, !needsLogin, detail != nil, cooldownSeconds(at: now()) == 0 else { return }
         generation += 1
         let request = generation
-        pendingCommand = command
+        isTesting = true
         errorMessage = nil
         notice = nil
-        defer { if generation == request { pendingCommand = nil } }
+        defer { if generation == request { isTesting = false } }
         do {
-            let receipt = try await useCases.execute(command, detail: detail)
+            let receipt = try await useCases.test(deviceID: deviceID)
             guard generation == request, !Task.isCancelled else { return }
-            if command == .test { cooldownUntil = now().addingTimeInterval(Double(receipt.cooldownSeconds)) }
-            notice = "Đã gửi lệnh đến MQTT broker; chưa có xác nhận từ Buzzer."
-            // Re-read only. Never replay a mutation when this GET fails.
-            do {
-                let updated = try await useCases.load(deviceID: deviceID)
-                guard generation == request, !Task.isCancelled else { return }
-                self.detail = updated
-            } catch {
-                guard generation == request, !Task.isCancelled else { return }
-                handle(error)
-            }
+            cooldownUntil = now().addingTimeInterval(3)
+            notice = receipt.message.isEmpty ? "Đã gửi lệnh đến MQTT broker; chưa có xác nhận từ Buzzer." : receipt.message
+            await loadAfterTest(request: request)
+        } catch {
+            guard generation == request, !Task.isCancelled else { return }
+            handle(error)
+        }
+    }
+
+    private func loadAfterTest(request: Int) async {
+        do {
+            let (detail, sources, events) = try await useCases.load(deviceID: deviceID)
+            guard generation == request, !Task.isCancelled else { return }
+            self.detail = detail
+            self.sources = sources
+            self.events = events
         } catch {
             guard generation == request, !Task.isCancelled else { return }
             handle(error)
@@ -79,23 +87,19 @@ final class BuzzerViewModel {
     func deactivate() {
         generation += 1
         isLoading = false
-        pendingCommand = nil
+        isTesting = false
     }
 
     private func handle(_ error: Error) {
-        if case BuzzerError.unavailable = error { detail = nil }
+        if case BuzzerError.unavailable = error { detail = nil; sources = []; events = [] }
         if let apiError = error as? DeviceAPIError {
             switch apiError {
             case .missingAccessToken, .httpStatus(401):
-                detail = nil
-                notice = nil
-                needsLogin = true
+                detail = nil; sources = []; events = []; notice = nil; needsLogin = true
             default: break
             }
         }
-        if case BuzzerError.cooldown(let seconds) = error {
-            cooldownUntil = now().addingTimeInterval(Double(seconds))
-        }
+        if case BuzzerError.cooldown(let seconds) = error { cooldownUntil = now().addingTimeInterval(Double(seconds)) }
         errorMessage = error.localizedDescription
     }
 }

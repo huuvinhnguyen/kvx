@@ -8,8 +8,10 @@ class BuzzerProvider extends ChangeNotifier {
   final BuzzerUseCases useCases;
   final DateTime Function() now;
   BuzzerDetail? detail;
+  List<BuzzerSource> sources = const [];
+  List<BuzzerMotionEvent> events = const [];
   bool isLoading = false;
-  BuzzerCommand? pendingCommand;
+  bool isTesting = false;
   String? errorMessage;
   String? notice;
   bool needsLogin = false;
@@ -23,7 +25,7 @@ class BuzzerProvider extends ChangeNotifier {
     required this.useCases,
     DateTime Function()? now,
   }) : now = now ?? DateTime.now;
-  bool get isBusy => isLoading || pendingCommand != null;
+  bool get isBusy => isLoading || isTesting;
   int get cooldownSeconds =>
       ((_cooldownUntil?.difference(now()).inMilliseconds ?? 0) / 1000)
           .ceil()
@@ -31,7 +33,7 @@ class BuzzerProvider extends ChangeNotifier {
   bool _current(int request) => !_disposed && request == _generation;
 
   Future<void> load() async {
-    if (_disposed || pendingCommand != null) return;
+    if (_disposed || isTesting) return;
     final request = ++_generation;
     isLoading = true;
     errorMessage = null;
@@ -40,7 +42,9 @@ class BuzzerProvider extends ChangeNotifier {
     try {
       final result = await useCases.load(deviceId);
       if (!_current(request)) return;
-      detail = result;
+      detail = result.$1;
+      sources = result.$2;
+      events = result.$3;
       needsLogin = false;
     } catch (error) {
       if (_current(request)) _handle(error);
@@ -52,27 +56,37 @@ class BuzzerProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> send(BuzzerCommand command) async {
-    if (_disposed || isBusy || needsLogin || detail == null) return;
-    if (command == BuzzerCommand.test && cooldownSeconds > 0) return;
+  Future<void> test() async {
+    if (_disposed ||
+        isBusy ||
+        needsLogin ||
+        detail == null ||
+        cooldownSeconds > 0) {
+      return;
+    }
     final request = ++_generation;
-    pendingCommand = command;
+    isTesting = true;
     errorMessage = null;
     notice = null;
     notifyListeners();
     try {
-      final receipt = await useCases.execute(detail!, command);
+      final receipt = await useCases.test(deviceId);
       if (!_current(request)) return;
-      if (command == BuzzerCommand.test) _cooldown(receipt.cooldownSeconds);
-      notice = 'Đã gửi lệnh đến MQTT broker; chưa có xác nhận từ Buzzer.';
-      // Read only: failure here must never replay the command.
-      final updated = await useCases.load(deviceId);
-      if (_current(request)) detail = updated;
+      _cooldown(3);
+      notice = receipt.message.isEmpty
+          ? 'Đã gửi lệnh đến MQTT broker; chưa có xác nhận từ Buzzer.'
+          : receipt.message;
+      final result = await useCases.load(deviceId);
+      if (_current(request)) {
+        detail = result.$1;
+        sources = result.$2;
+        events = result.$3;
+      }
     } catch (error) {
       if (_current(request)) _handle(error);
     } finally {
       if (_current(request)) {
-        pendingCommand = null;
+        isTesting = false;
         notifyListeners();
       }
     }
@@ -83,10 +97,14 @@ class BuzzerProvider extends ChangeNotifier {
       if (error.kind == BuzzerFailureKind.authentication) {
         needsLogin = true;
         detail = null;
+        sources = const [];
+        events = const [];
         notice = null;
       }
       if (error.kind == BuzzerFailureKind.unavailable) {
         detail = null;
+        sources = const [];
+        events = const [];
       }
       if (error.kind == BuzzerFailureKind.cooldown) {
         _cooldown(error.retryAfterSeconds);

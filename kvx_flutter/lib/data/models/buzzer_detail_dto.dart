@@ -1,76 +1,99 @@
 import '../../domain/entities/buzzer_detail.dart';
 
 class BuzzerDetailDto {
-  static BuzzerDetail fromJson(Map<String, dynamic> json) {
+  static BuzzerDetail fromJson(Map<String, dynamic> json) =>
+      fromDetailJson(json);
+
+  static BuzzerDetail fromDetailJson(Map<String, dynamic> json) {
     try {
-      final sources = (json['sources'] as List).map((raw) {
-        final item = raw as Map<String, dynamic>;
-        final index = item['relay_index'] as int;
-        if (index < 0) throw const FormatException();
-        return BuzzerSource(
-          id: _id(item['id']),
-          name: item['name'] as String,
-          chipId: _id(item['chip_id']),
-          relayIndex: index,
-          durationMs: _duration(item['duration_ms']),
-        );
-      }).toList();
-      final events = (json['events'] as List).map((raw) {
-        final item = raw as Map<String, dynamic>;
-        final sourceId = _id(item['source_id']);
-        final sourceChipId = _id(item['source_chip_id']);
-        if (!sources.any((s) => s.id == sourceId && s.chipId == sourceChipId)) {
-          throw const FormatException();
-        }
-        final timestamp = item['occurred_at'] as String;
-        // Timestamps must carry an offset; never interpret a server timestamp as phone-local time.
-        if (!RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(timestamp)) {
-          throw const FormatException();
-        }
-        return BuzzerMotionEvent(
-          id: _id(item['id']),
-          sourceId: sourceId,
-          sourceName: item['source_name'] as String,
-          sourceChipId: sourceChipId,
-          occurredAt: DateTime.parse(timestamp),
-          durationMs: _duration(item['duration_ms']),
-        );
-      }).toList();
-      if (events.length > 20 ||
-          sources.map((s) => s.id).toSet().length != sources.length ||
-          events.map((e) => e.id).toSet().length != events.length) {
-        throw const FormatException();
-      }
-      final lastSeen = json['last_seen'] as String?;
+      if (json['status'] != 'success') throw const FormatException();
+      final value = json['buzzer'] as Map<String, dynamic>;
+      if (value['device_type'] != 'buzzer') throw const FormatException();
       return BuzzerDetail(
-        id: _id(json['id']),
-        name: json['name'] as String,
-        chipId: _id(json['chip_id']),
-        online: json['online'] as bool,
-        lastSeen:
-            lastSeen == null ||
-                !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(lastSeen)
-            ? null
-            : DateTime.tryParse(lastSeen),
-        buildVersion: json['build_version'] as String?,
-        appVersion: json['app_version'] as String?,
-        testDurationMs: json['test_duration_ms'] as int?,
-        sources: sources,
-        events: events,
+        id: '${value['id']}',
+        name: value['name'] as String,
+        chipId: _requiredString(value['chip_id']),
+        online: value['online'] as bool,
+        lastSeen: _date(value['last_seen']),
+        linkedPirCount: value['linked_pir_count'] as int,
+        lastTriggeredAt: _date(value['last_triggered_at']),
+        sources: const [],
+        events: const [],
       );
     } catch (_) {
       throw const BuzzerFailure(BuzzerFailureKind.invalidData);
     }
   }
 
-  static String _id(dynamic value) {
+  static List<BuzzerSource> sourcesFromJson(Map<String, dynamic> json) {
+    try {
+      if (json['status'] != 'success') throw const FormatException();
+      final values = (json['linked_pirs'] as List).map((raw) {
+        final item = raw as Map<String, dynamic>;
+        return BuzzerSource(
+          id: '${item['id']}',
+          name: item['name'] as String,
+          chipId: _requiredString(item['chip_id']),
+          relayIndex: _nonNegative(item['relay_index']),
+          longlast: _duration(item['longlast']),
+        );
+      }).toList();
+      if (values.map((item) => item.id).toSet().length != values.length) {
+        throw const FormatException();
+      }
+      return values;
+    } catch (_) {
+      throw const BuzzerFailure(BuzzerFailureKind.invalidData);
+    }
+  }
+
+  static List<BuzzerMotionEvent> eventsFromJson(Map<String, dynamic> json) {
+    try {
+      if (json['status'] != 'success') throw const FormatException();
+      final values = (json['events'] as List).map((raw) {
+        final item = raw as Map<String, dynamic>;
+        final pir = item['pir'] as Map<String, dynamic>;
+        return BuzzerMotionEvent(
+          id: '${item['id']}',
+          eventType: item['event_type'] as String,
+          pirId: '${pir['id']}',
+          sourceName: pir['name'] as String,
+          sourceChipId: _requiredString(pir['chip_id']),
+          occurredAt: _date(item['occurred_at'])!,
+          relayIndex: _nonNegative(item['relay_index']),
+          longlast: _duration(item['longlast']),
+        );
+      }).toList();
+      if (values.length > 20 ||
+          values.map((item) => item.id).toSet().length != values.length) {
+        throw const FormatException();
+      }
+      return values;
+    } catch (_) {
+      throw const BuzzerFailure(BuzzerFailureKind.invalidData);
+    }
+  }
+
+  static String _requiredString(dynamic value) {
     if (value is! String || value.isEmpty) throw const FormatException();
+    return value;
+  }
+
+  static int _nonNegative(dynamic value) {
+    if (value is! int || value < 0) throw const FormatException();
     return value;
   }
 
   static int? _duration(dynamic value) {
     if (value == null) return null;
-    if (value is! int || value < 0) throw const FormatException();
-    return value;
+    return _nonNegative(value);
+  }
+
+  static DateTime? _date(dynamic value) {
+    if (value == null) return null;
+    if (value is! String || !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(value)) {
+      throw const FormatException();
+    }
+    return DateTime.tryParse(value) ?? (throw const FormatException());
   }
 }

@@ -75,6 +75,27 @@ class BinblogDeviceDataSource implements DeviceDataSource {
     return _decodeObject(response.body);
   }
 
+  Future<Map<String, dynamic>> deleteJson(String path) async {
+    final token = await _token();
+    final response = await _client
+        .delete(
+          Uri.parse('$_baseUrl/$path'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode == 401) _accessToken = null;
+    if (response.statusCode != 200) {
+      throw BinblogApiException(
+        'Không cập nhật được cấu hình.',
+        statusCode: response.statusCode,
+      );
+    }
+    return _decodeObject(response.body);
+  }
+
   BinblogDeviceDataSource({
     required this.username,
     required this.password,

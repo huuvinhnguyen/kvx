@@ -10,6 +10,10 @@ struct BuzzerUseCases {
         return try await (detail, sources, events)
     }
 
+    func availablePIRs(deviceID: String) async throws -> [AvailableBuzzerPIR] { try await repository.availablePIRs(deviceID: deviceID) }
+    func link(deviceID: String, configuration: BuzzerLinkConfiguration) async throws { try await repository.link(deviceID: deviceID, configuration: configuration) }
+    func unlink(deviceID: String, pirID: String) async throws { try await repository.unlink(deviceID: deviceID, pirID: pirID) }
+
     func test(deviceID: String) async throws -> BuzzerTestReceipt {
         try await repository.test(deviceID: deviceID)
     }

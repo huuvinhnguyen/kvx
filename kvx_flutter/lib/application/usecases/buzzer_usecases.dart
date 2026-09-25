@@ -5,16 +5,29 @@ class BuzzerUseCases {
   final BuzzerRepository repository;
   const BuzzerUseCases(this.repository);
 
-  Future<(BuzzerDetail, List<BuzzerSource>, List<BuzzerMotionEvent>)> load(String deviceId) async {
+  Future<(BuzzerDetail, List<BuzzerSource>, List<BuzzerMotionEvent>)> load(
+    String deviceId,
+  ) async {
     final results = await Future.wait<Object>([
       repository.load(deviceId),
       repository.loadLinkedPirs(deviceId),
       repository.loadHistory(deviceId),
     ]);
     final detail = results[0] as BuzzerDetail;
-    if (detail.id != deviceId) throw const BuzzerFailure(BuzzerFailureKind.invalidData);
-    return (detail, results[1] as List<BuzzerSource>, results[2] as List<BuzzerMotionEvent>);
+    if (detail.id != deviceId) {
+      throw const BuzzerFailure(BuzzerFailureKind.invalidData);
+    }
+    return (
+      detail,
+      results[1] as List<BuzzerSource>,
+      results[2] as List<BuzzerMotionEvent>,
+    );
   }
 
+  Future<List<AvailableBuzzerPir>> availablePirs(String id) =>
+      repository.loadAvailablePirs(id);
+  Future<void> link(String id, BuzzerLinkConfiguration configuration) =>
+      repository.link(id, configuration);
+  Future<void> unlink(String id, String pirId) => repository.unlink(id, pirId);
   Future<BuzzerTestReceipt> test(String deviceId) => repository.test(deviceId);
 }

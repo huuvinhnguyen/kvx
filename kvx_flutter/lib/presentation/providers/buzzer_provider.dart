@@ -12,6 +12,12 @@ class BuzzerProvider extends ChangeNotifier {
   List<BuzzerMotionEvent> events = const [];
   bool isLoading = false;
   bool isTesting = false;
+  List<AvailableBuzzerPir> availablePirs = const [];
+  bool isLoadingAvailable = false;
+  bool isMutating = false;
+  bool requiresRefresh = false;
+  bool _mutationSucceededAwaitingRefresh = false;
+  String? availableError;
   String? errorMessage;
   String? notice;
   bool needsLogin = false;
@@ -25,7 +31,7 @@ class BuzzerProvider extends ChangeNotifier {
     required this.useCases,
     DateTime Function()? now,
   }) : now = now ?? DateTime.now;
-  bool get isBusy => isLoading || isTesting;
+  bool get isBusy => isLoading || isTesting || isMutating;
   int get cooldownSeconds =>
       ((_cooldownUntil?.difference(now()).inMilliseconds ?? 0) / 1000)
           .ceil()
@@ -33,24 +39,142 @@ class BuzzerProvider extends ChangeNotifier {
   bool _current(int request) => !_disposed && request == _generation;
 
   Future<void> load() async {
-    if (_disposed || isTesting) return;
+    if (_disposed || isTesting || isMutating) return;
+    final reconciling = requiresRefresh;
     final request = ++_generation;
     isLoading = true;
     errorMessage = null;
-    notice = null;
+    if (!requiresRefresh) notice = null;
     notifyListeners();
     try {
       final result = await useCases.load(deviceId);
       if (!_current(request)) return;
+      if (requiresRefresh) {
+        final available = await useCases.availablePirs(deviceId);
+        if (!_current(request)) return;
+        availablePirs = available;
+      }
       detail = result.$1;
       sources = result.$2;
       events = result.$3;
       needsLogin = false;
+      requiresRefresh = false;
+      if (_mutationSucceededAwaitingRefresh) {
+        notice =
+            'Đã cập nhật cấu hình PIR. Liên kết không chạy Test Buzzer hoặc phát âm.';
+      } else if (reconciling) {
+        notice = 'Đã tải lại cấu hình PIR từ máy chủ.';
+      }
+      _mutationSucceededAwaitingRefresh = false;
     } catch (error) {
-      if (_current(request)) _handle(error);
+      if (_current(request)) {
+        _handle(error);
+        if (requiresRefresh) {
+          errorMessage = _mutationSucceededAwaitingRefresh
+              ? 'Đã cập nhật cấu hình PIR nhưng chưa tải lại được dữ liệu. Hãy tải lại trước khi chỉnh sửa tiếp. $error'
+              : 'Chưa xác nhận được kết quả cập nhật cấu hình. Hãy tải lại trước khi chỉnh sửa tiếp. $error';
+        }
+      }
     } finally {
       if (_current(request)) {
         isLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> loadAvailable() async {
+    if (_disposed || isMutating) return;
+    final request = _generation;
+    isLoadingAvailable = true;
+    availableError = null;
+    notifyListeners();
+    try {
+      final values = await useCases.availablePirs(deviceId);
+      if (_current(request)) availablePirs = values;
+    } catch (error) {
+      if (_current(request)) availableError = error.toString();
+    } finally {
+      if (_current(request)) {
+        isLoadingAvailable = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> link(BuzzerLinkConfiguration configuration) async {
+    if (_disposed ||
+        isBusy ||
+        requiresRefresh ||
+        !configuration.isValid ||
+        !availablePirs.any((pir) => pir.id == configuration.pirId)) {
+      return;
+    }
+    await _mutate(() => useCases.link(deviceId, configuration));
+  }
+
+  Future<void> unlink(String pirId) async {
+    if (_disposed ||
+        isBusy ||
+        requiresRefresh ||
+        !sources.any((pir) => pir.id == pirId)) {
+      return;
+    }
+    await _mutate(() => useCases.unlink(deviceId, pirId));
+  }
+
+  Future<void> _mutate(Future<void> Function() operation) async {
+    final request = ++_generation;
+    isMutating = true;
+    errorMessage = null;
+    notice = null;
+    notifyListeners();
+    try {
+      await operation();
+      if (!_current(request)) return;
+    } catch (error) {
+      if (_current(request)) {
+        if (error is BuzzerFailure &&
+            error.kind == BuzzerFailureKind.uncertainMutation) {
+          requiresRefresh = true;
+          _mutationSucceededAwaitingRefresh = false;
+          errorMessage = error.toString();
+        } else {
+          _handle(error);
+        }
+        isMutating = false;
+        notifyListeners();
+      }
+      return;
+    }
+    _mutationSucceededAwaitingRefresh = true;
+    notice = 'Đã cập nhật cấu hình PIR. Đang tải lại danh sách…';
+    notifyListeners();
+    try {
+      final result = await Future.wait<Object>([
+        useCases.load(deviceId),
+        useCases.availablePirs(deviceId),
+      ]);
+      if (!_current(request)) return;
+      final loaded =
+          result[0]
+              as (BuzzerDetail, List<BuzzerSource>, List<BuzzerMotionEvent>);
+      detail = loaded.$1;
+      sources = loaded.$2;
+      events = loaded.$3;
+      availablePirs = result[1] as List<AvailableBuzzerPir>;
+      requiresRefresh = false;
+      _mutationSucceededAwaitingRefresh = false;
+      notice =
+          'Đã cập nhật cấu hình PIR. Liên kết không chạy Test Buzzer hoặc phát âm.';
+    } catch (error) {
+      if (!_current(request)) return;
+      requiresRefresh = true;
+      errorMessage =
+          'Đã cập nhật cấu hình PIR nhưng chưa tải lại được dữ liệu. Hãy tải lại trước khi chỉnh sửa tiếp. $error';
+    } finally {
+      if (_current(request)) {
+        isMutating = false;
         notifyListeners();
       }
     }

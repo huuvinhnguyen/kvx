@@ -24,7 +24,8 @@ class _BinblogLoginScreenState extends State<BinblogLoginScreen> {
     final model = context.watch<SessionProvider>();
     final busy =
         model.state.phase == SessionPhase.authenticating ||
-        model.state.clearing;
+        model.state.clearing ||
+        model.isSessionTransitioning;
     return Scaffold(
       appBar: AppBar(title: const Text('Đăng nhập Binblog')),
       body: AutofillGroup(
@@ -80,6 +81,17 @@ class _BinblogLoginScreenState extends State<BinblogLoginScreen> {
                       semanticsLabel: 'Đang xử lý phiên',
                     )
                   : const Text('Đăng nhập'),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: busy || model.state.message != null
+                  ? null
+                  : model.loginWithGoogle,
+              icon: const Text(
+                'G',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              label: const Text('Đăng nhập bằng Google'),
             ),
             if (model.state.phase == SessionPhase.authenticating)
               TextButton(

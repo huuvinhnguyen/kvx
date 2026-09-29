@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'application/auth/session_coordinator.dart';
+import 'application/auth/google_sign_in_use_case.dart';
 import 'domain/auth/session.dart';
 import 'data/auth/secure_session_store.dart';
 import 'data/auth/password_authenticator.dart';
 import 'data/auth/authenticated_transport.dart';
+import 'data/auth/google_sign_in_adapter.dart';
+import 'data/auth/social_session_client.dart';
 import 'data/datasources/binblog_device_datasource.dart';
 import 'data/repositories/binblog_buzzer_repository.dart';
 import 'application/usecases/buzzer_usecases.dart';
@@ -25,26 +28,43 @@ void main() {
 class KvxApp extends StatefulWidget {
   final SessionCoordinator? coordinator;
   final http.Client? client;
-  const KvxApp({super.key, this.coordinator, this.client});
+  final http.Client? socialClient;
+  final GoogleSignInUseCase? googleSignIn;
+  const KvxApp({
+    super.key,
+    this.coordinator,
+    this.client,
+    this.socialClient,
+    this.googleSignIn,
+  });
   @override
   State<KvxApp> createState() => _KvxAppState();
 }
 
 class _KvxAppState extends State<KvxApp> {
   late final http.Client _client;
+  late final http.Client _socialClient;
   late final SessionCoordinator _coordinator;
   late final SessionProvider _session;
+  late final GoogleSignInUseCase _googleSignIn;
   @override
   void initState() {
     super.initState();
     _client = widget.client ?? http.Client();
+    _socialClient = widget.socialClient ?? http.Client();
     _coordinator =
         widget.coordinator ??
         SessionCoordinator(
           store: const SecureSessionStore(),
           authentication: BinblogPasswordAuthenticator(_client),
         );
-    _session = SessionProvider(_coordinator);
+    _googleSignIn =
+        widget.googleSignIn ??
+        GoogleSignInUseCase(
+          credentials: GoogleSignInAdapter(),
+          sessions: BinblogSocialSessionClient(_socialClient),
+        );
+    _session = SessionProvider(_coordinator, googleSignIn: _googleSignIn);
     unawaited(_session.restore());
   }
 
@@ -53,6 +73,7 @@ class _KvxAppState extends State<KvxApp> {
     _session.dispose();
     if (widget.coordinator == null) _coordinator.dispose();
     if (widget.client == null) _client.close();
+    if (widget.socialClient == null) _socialClient.close();
     super.dispose();
   }
 

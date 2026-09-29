@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kvx_flutter/data/datasources/binblog_device_datasource.dart';
+import '../support/auth_fixture.dart';
 import 'package:kvx_flutter/data/models/buzzer_detail_dto.dart';
 import 'package:kvx_flutter/data/repositories/binblog_buzzer_repository.dart';
 import 'package:kvx_flutter/domain/entities/buzzer_detail.dart';
@@ -125,11 +126,7 @@ class BuzzerManagementTransportHarness {
   late final BuzzerProvider model;
 
   BuzzerManagementTransportHarness() {
-    source = BinblogDeviceDataSource(
-      username: 'fixture',
-      password: 'fixture',
-      client: MockClient(_respond),
-    );
+    source = authenticatedFixture(client: MockClient(_respond));
     model = BuzzerProvider(
       deviceId: '42',
       useCases: BuzzerUseCases(BinblogBuzzerRepository(source)),
@@ -138,9 +135,7 @@ class BuzzerManagementTransportHarness {
 
   Future<http.Response> _respond(http.Request request) async {
     requests.add(request);
-    if (request.url.path == '/api/login') {
-      return http.Response('{"token":"token"}', 200);
-    }
+    expect(request.url.path, isNot('/api/login'));
     if (request.method == 'POST' && request.url.path.endsWith('/linked_pirs')) {
       postCalls++;
       if (failPost) throw http.ClientException('connection reset');
@@ -549,13 +544,8 @@ void main() {
       422: BuzzerFailureKind.configuration,
       503: BuzzerFailureKind.command,
     }.entries) {
-      final source = BinblogDeviceDataSource(
-        username: 'fixture',
-        password: 'fixture',
+      final source = authenticatedFixture(
         client: MockClient((request) async {
-          if (request.url.path == '/api/login') {
-            return http.Response('{"token":"token"}', 200);
-          }
           return http.Response('{"status":"error"}', entry.key);
         }),
       );
@@ -645,14 +635,10 @@ void main() {
 
   test('repository uses device-scoped paths and Bearer authentication', () async {
     final requests = <http.Request>[];
-    final source = BinblogDeviceDataSource(
-      username: 'fixture',
-      password: 'fixture',
+    final source = authenticatedFixture(
+      token: 'fixture-token',
       client: MockClient((request) async {
         requests.add(request);
-        if (request.url.path == '/api/login') {
-          return http.Response('{"token":"fixture-token"}', 200);
-        }
         expect(request.headers['Authorization'], 'Bearer fixture-token');
         expect(request.headers['Accept'], 'application/json');
         switch (request.url.path) {
@@ -694,14 +680,9 @@ void main() {
     'management uses numeric POST body and DELETE without Test Buzzer',
     () async {
       final requests = <http.Request>[];
-      final source = BinblogDeviceDataSource(
-        username: 'fixture',
-        password: 'fixture',
+      final source = authenticatedFixture(
         client: MockClient((request) async {
           requests.add(request);
-          if (request.url.path == '/api/login') {
-            return http.Response('{"token":"token"}', 200);
-          }
           if (request.url.path.endsWith('/available_pirs')) {
             return http.Response(
               '{"status":"success","available_pirs":[{"id":7,"name":null,"chip_id":"pir7","linked_buzzer":null,"requires_confirmation":true}]}',
@@ -758,13 +739,8 @@ void main() {
     () async {
       for (final method in ['POST', 'DELETE']) {
         for (final status in [200, 429, 503]) {
-          final source = BinblogDeviceDataSource(
-            username: 'fixture',
-            password: 'fixture',
+          final source = authenticatedFixture(
             client: MockClient((request) async {
-              if (request.url.path == '/api/login') {
-                return http.Response('{"token":"token"}', 200);
-              }
               return http.Response('{"status":"error"}', status);
             }),
           );
@@ -791,13 +767,8 @@ void main() {
   );
 
   test('429 maps to server cooldown and 404 maps to unavailable', () async {
-    final source = BinblogDeviceDataSource(
-      username: 'fixture',
-      password: 'fixture',
+    final source = authenticatedFixture(
       client: MockClient((request) async {
-        if (request.url.path == '/api/login') {
-          return http.Response('{"token":"token"}', 200);
-        }
         if (request.url.path.endsWith('/test')) {
           return http.Response(
             '{"status":"error"}',

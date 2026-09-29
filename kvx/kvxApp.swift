@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct kvxApp: App {
+    private let coordinator = SessionCoordinator(store: KeychainSessionStore(), authentication: BinblogLoginClient(session: AuthenticatedTransport.makeSession()))
+
     var body: some Scene {
         WindowGroup {
-            ContentView(viewModel: DeviceViewModel(repository: RemoteDeviceRepository()))
+            SessionRootView(coordinator: coordinator)
         }
     }
 }

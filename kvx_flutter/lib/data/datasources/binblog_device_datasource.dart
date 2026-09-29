@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import '../auth/authenticated_transport.dart';
 
 import '../../domain/entities/device.dart';
 import '../models/binblog_device_dto.dart';
@@ -8,39 +8,20 @@ import 'device_local_datasource.dart';
 
 class BinblogDeviceDataSource implements DeviceDataSource {
   static const _baseUrl = 'https://khuonvien.vn';
-  final String username;
-  final String password;
-  final http.Client _client;
-  String? _accessToken;
-  Future<String>? _pendingLogin;
+  final AuthenticatedTransport transport;
+  BinblogDeviceDataSource({required this.transport});
 
-  Future<String> _token() async {
-    if (_accessToken != null) return _accessToken!;
-    final pending = _pendingLogin ??= _login();
-    try {
-      return await pending;
-    } finally {
-      if (identical(_pendingLogin, pending)) _pendingLogin = null;
-    }
-  }
-
-  void close() => _client.close();
+  // The app owns transport/client lifetime; feature graphs never own credentials.
+  void close() {}
 
   Future<Map<String, dynamic>> getJson(
     String path, [
     Map<String, String> query = const {},
   ]) async {
-    final token = await _token();
-    final response = await _client
-        .get(
-          Uri.parse('$_baseUrl/$path').replace(queryParameters: query),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        )
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode == 401) _accessToken = null;
+    final response = await transport.send(
+      'GET',
+      Uri.parse('$_baseUrl/$path').replace(queryParameters: query),
+    );
     if (response.statusCode != 200) {
       throw BinblogApiException(
         'Không tải được dữ liệu (${response.statusCode}). Hãy thử lại.',
@@ -51,19 +32,11 @@ class BinblogDeviceDataSource implements DeviceDataSource {
   }
 
   Future<Map<String, dynamic>> postJson(String path, {String? body}) async {
-    final token = await _token();
-    final response = await _client
-        .post(
-          Uri.parse('$_baseUrl/$path'),
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: body,
-        )
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode == 401) _accessToken = null;
+    final response = await transport.send(
+      'POST',
+      Uri.parse('$_baseUrl/$path'),
+      body: body,
+    );
     if (response.statusCode != 200) {
       final retry = int.tryParse(response.headers['retry-after'] ?? '') ?? 3;
       throw BinblogApiException(
@@ -76,17 +49,10 @@ class BinblogDeviceDataSource implements DeviceDataSource {
   }
 
   Future<Map<String, dynamic>> deleteJson(String path) async {
-    final token = await _token();
-    final response = await _client
-        .delete(
-          Uri.parse('$_baseUrl/$path'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        )
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode == 401) _accessToken = null;
+    final response = await transport.send(
+      'DELETE',
+      Uri.parse('$_baseUrl/$path'),
+    );
     if (response.statusCode != 200) {
       throw BinblogApiException(
         'Không cập nhật được cấu hình.',
@@ -94,41 +60,6 @@ class BinblogDeviceDataSource implements DeviceDataSource {
       );
     }
     return _decodeObject(response.body);
-  }
-
-  BinblogDeviceDataSource({
-    required this.username,
-    required this.password,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
-
-  Future<String> _login() async {
-    if (username.isEmpty || password.isEmpty) {
-      throw const BinblogApiException('Chưa cấu hình tài khoản Binblog.');
-    }
-
-    final loginResponse = await _client
-        .post(
-          Uri.parse('$_baseUrl/api/login'),
-          headers: {'Content-Type': 'application/json', 'Accept': '*/*'},
-          body: jsonEncode({'username': username, 'password': password}),
-        )
-        .timeout(const Duration(seconds: 20));
-    if (loginResponse.statusCode != 200) {
-      throw BinblogApiException(
-        'Đăng nhập Binblog thất bại (${loginResponse.statusCode}).',
-        statusCode: loginResponse.statusCode,
-      );
-    }
-
-    final loginBody = _decodeObject(loginResponse.body);
-    final token = loginBody['token'] as String?;
-    if (token == null || token.isEmpty) {
-      throw const BinblogApiException('Binblog không trả về access token.');
-    }
-
-    _accessToken = token;
-    return token;
   }
 
   @override

@@ -9,11 +9,18 @@ DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PROJECT_DIR/build/native-derived}"
 xcodebuild -project "$PROJECT_DIR/kvx.xcodeproj" -scheme kvx \
   -configuration Debug -sdk iphonesimulator \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-  -derivedDataPath "$DERIVED_DATA_PATH" CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath "$DERIVED_DATA_PATH" CODE_SIGN_IDENTITY=- build
 
 APP_PATH="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/kvx.app"
 if [ ! -d "$APP_PATH" ]; then
   echo "Không tìm thấy bản vừa build: $APP_PATH" >&2
+  exit 1
+fi
+
+# Simulator Keychain rejects unsigned clients with errSecMissingEntitlement.
+# Refuse to install a build that cannot persist the session barrier.
+if ! codesign --verify --strict "$APP_PATH"; then
+  echo "Bản simulator chưa được ký; Keychain sẽ không hoạt động." >&2
   exit 1
 fi
 

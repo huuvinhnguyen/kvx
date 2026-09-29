@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../../application/usecases/device_usecases.dart';
 import '../../domain/entities/device.dart';
 import '../../domain/entities/device_filter.dart';
+import '../../domain/auth/session.dart';
 
 class DeviceProvider extends ChangeNotifier {
   final GetDevicesUseCase _getDevicesUseCase;
@@ -19,6 +20,8 @@ class DeviceProvider extends ChangeNotifier {
        _deleteDeviceUseCase = deleteDeviceUseCase,
        _toggleStatusUseCase = toggleStatusUseCase;
 
+  bool _disposed = false;
+  int _generation = 0;
   List<Device> _devices = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -46,17 +49,25 @@ class DeviceProvider extends ChangeNotifier {
       _devices.where((d) => d.status == DeviceStatus.busy).length;
 
   Future<void> loadDevices() async {
+    if (_disposed) return;
+    final request = ++_generation;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _devices = await _getDevicesUseCase();
+      final devices = await _getDevicesUseCase();
+      if (_disposed || request != _generation) return;
+      _devices = devices;
     } catch (error) {
+      if (_disposed || request != _generation) return;
+      if (error is SessionFailure) _devices = [];
       _errorMessage = error.toString();
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (!_disposed && request == _generation) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -86,24 +97,34 @@ class DeviceProvider extends ChangeNotifier {
       status: status,
     );
     await _addDeviceUseCase(device);
+    if (_disposed) return;
     _devices.add(device);
     notifyListeners();
   }
 
   Future<void> deleteDevice(Device device) async {
     await _deleteDeviceUseCase(device.id);
+    if (_disposed) return;
     _devices.removeWhere((d) => d.id == device.id);
     notifyListeners();
   }
 
   Future<void> toggleStatus(Device device) async {
     final updatedDevice = await _toggleStatusUseCase(device);
-    if (updatedDevice != null) {
+    if (!_disposed && updatedDevice != null) {
       final index = _devices.indexWhere((d) => d.id == device.id);
       if (index != -1) {
         _devices[index] = updatedDevice;
         notifyListeners();
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _generation++;
+    _devices = [];
+    super.dispose();
   }
 }

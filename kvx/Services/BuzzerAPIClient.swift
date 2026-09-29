@@ -1,8 +1,7 @@
 import Foundation
 
-struct BuzzerAPIClient: BuzzerRepository {
-    var tokenProvider: any AccessTokenProvider = UserDefaultsAccessTokenProvider()
-    var session: URLSession = .shared
+nonisolated struct BuzzerAPIClient: BuzzerRepository {
+    var transport = AuthenticatedTransport()
     var baseURL = URL(string: "https://khuonvien.vn")!
 
     func detail(deviceID: String) async throws -> BuzzerDetail {
@@ -70,11 +69,9 @@ struct BuzzerAPIClient: BuzzerRepository {
 
     private func request(deviceID: String, suffix: String, method: String, body: Data? = nil) async throws -> Data {
         guard !deviceID.isEmpty else { throw BuzzerError.unavailable }
-        guard let token = tokenProvider.accessToken, !token.isEmpty else { throw DeviceAPIError.missingAccessToken }
         let url = baseURL.appendingPathComponent("api/devices/\(deviceID)/buzzer\(suffix)")
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if method == "POST" {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -82,7 +79,8 @@ struct BuzzerAPIClient: BuzzerRepository {
         }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await transport.data(for: request) }
+        catch let error as SessionFailure { throw error }
         catch {
             if method == "POST" && suffix == "/test" { throw BuzzerError.commandFailed }
             if suffix.hasPrefix("/linked_pirs") && method != "GET" { throw BuzzerError.uncertainMutation }

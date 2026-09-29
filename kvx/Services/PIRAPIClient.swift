@@ -1,8 +1,7 @@
 import Foundation
 
-struct PIRAPIClient: PIRRepository {
-    var tokenProvider: AccessTokenProvider = UserDefaultsAccessTokenProvider()
-    var session: URLSession = .shared
+nonisolated struct PIRAPIClient: PIRRepository {
+    var transport = AuthenticatedTransport()
     var baseURL = URL(string: "https://khuonvien.vn")!
 
     func statistics(chipID: String, date: String) async throws -> PIRStatistics {
@@ -21,16 +20,11 @@ struct PIRAPIClient: PIRRepository {
     }
 
     private func get<T: Decodable>(_ endpoint: String, query: [String: String]) async throws -> T {
-        guard let token = tokenProvider.accessToken, !token.isEmpty else {
-            throw DeviceAPIError.missingAccessToken
-        }
         var components = URLComponents(url: baseURL.appendingPathComponent("api/devices/\(endpoint)"), resolvingAgainstBaseURL: false)!
         components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else { throw DeviceAPIError.invalidResponse }
+        let (data, response) = try await transport.data(for: request)
         guard response.statusCode == 200 else { throw DeviceAPIError.httpStatus(response.statusCode) }
         return try JSONDecoder().decode(T.self, from: data)
     }

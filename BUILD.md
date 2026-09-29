@@ -63,6 +63,49 @@ Swift chi import `binblog.accessToken` tu UserDefaults khi Keychain chua co entr
 Khong tiep tuc nap token vao UserDefaults bang `simctl defaults write` sau migration.
 Signed-out Keychain entry ngan viec import lai token cu.
 
+### Cau hinh Google Sign-In
+
+Google login can bon OAuth client ID cong khai. Khong dat OAuth client secret
+trong ung dung hoac repository:
+
+1. Web OAuth client: backend audience trong Rails `GOOGLE_CLIENT_IDS`, Swift
+   `GIDServerClientID`, va Flutter `serverClientId`.
+2. Swift iOS OAuth client: bundle `com.kvx.kvx`.
+3. Flutter iOS OAuth client: bundle `com.kvx.kvxFlutter`.
+4. Flutter Android OAuth client: package `com.kvx.kvx_flutter`, dang ky cac SHA
+   certificate cua signing key.
+
+Swift (`com.kvx.kvx`) doc cac build setting sau vao `Info.plist`:
+
+- `GOOGLE_IOS_CLIENT_ID`: iOS OAuth client ID cho bundle Swift.
+- `GOOGLE_SERVER_CLIENT_ID`: Web OAuth client ID dung chung voi audience
+  `GOOGLE_CLIENT_IDS` cua Rails.
+- `GOOGLE_IOS_REVERSED_CLIENT_ID`: reversed Swift iOS client ID, dung lam URL
+  scheme callback.
+
+Co the dat cac gia tri tren trong Xcode build configuration/xcconfig rieng cua
+may hoac CI. Cac placeholder trong project de trong co chu dich. Simulator build
+van phai duoc ad-hoc signed (`CODE_SIGN_IDENTITY=-`) de Google SDK va Keychain
+hoat dong dung.
+
+Flutter iOS (`com.kvx.kvxFlutter`) dung cung ten build setting trong
+`ios/Flutter/Debug.xcconfig` va `Release.xcconfig`, nhung `GOOGLE_IOS_CLIENT_ID`
+va reversed ID phai thuoc Flutter iOS OAuth client. Flutter Android
+(`com.kvx.kvx_flutter`) nhan Web client ID luc build:
+
+```bash
+cd kvx_flutter
+flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=<web-oauth-client-id>
+```
+
+Android OAuth client phai dang ky dung package va SHA certificate cua tung
+signing key. Google Sign-In 7.2.0 yeu cau Android minSdk 24; app dat minSdk 24
+de khop plugin. Khong dung Firebase, Google Services Gradle plugin hoac
+`google-services.json`.
+
+Google chi cung cap ID token cho `POST /api/auth/social_sessions`. Ung dung chi
+luu Binblog JWT do Rails tra ve; khong luu Google access/refresh/ID token.
+
 ## Kiem tra nhanh
 
 Kiem tra cu phap Bash:
@@ -130,4 +173,5 @@ Neu UUID iPhone 16 Pro thay doi, cap nhat `SIMULATOR_ID` trong `run_iphone16pro.
 
 Dang nhap lai tu UI. 401 cua generation hien tai ket thuc phien; retry khong tu login. 401 cu khong duoc xoa phien tai khoan moi.
 
-Chi tiet: [Mobile auth session](docs/decisions/mobile-auth-session.md).
+Chi tiet: [Mobile auth session](docs/decisions/mobile-auth-session.md) va
+[Google social login](docs/decisions/mobile-google-social-login.md).

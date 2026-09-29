@@ -3,8 +3,8 @@ import SwiftUI
 struct SessionRootView: View {
     @State private var model: SessionViewModel
 
-    init(coordinator: SessionCoordinator) {
-        _model = State(initialValue: SessionViewModel(coordinator: coordinator))
+    init(coordinator: SessionCoordinator, googleSignIn: GoogleSignInUseCase? = nil) {
+        _model = State(initialValue: SessionViewModel(coordinator: coordinator, googleSignIn: googleSignIn))
     }
     var body: some View {
         Group {

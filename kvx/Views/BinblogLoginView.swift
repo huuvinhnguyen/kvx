@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignInSwift
 
 struct BinblogLoginView: View {
     let onSuccess: () -> Void
@@ -6,7 +7,9 @@ struct BinblogLoginView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var username = ""
     @State private var password = ""
-    private var isLoading: Bool { session.state.phase == .authenticating || session.state.clearing }
+    private var isLoading: Bool {
+        session.state.phase == .authenticating || session.state.clearing || session.isSessionTransitioning
+    }
 
     var body: some View {
         NavigationStack {
@@ -32,6 +35,13 @@ struct BinblogLoginView: View {
                 } footer: {
                     Text("Dùng cùng tài khoản với Flutter để xem cùng danh sách thiết bị.")
                 }
+                Section("Hoặc") {
+                    GoogleSignInButton {
+                        Task { await loginWithGoogle() }
+                    }
+                    .disabled(isLoading || session.state.message != nil)
+                    .accessibilityLabel("Đăng nhập bằng Google")
+                }
             }
             .navigationTitle("Đăng nhập Binblog")
             .toolbar {
@@ -39,7 +49,7 @@ struct BinblogLoginView: View {
                     Button(isLoading ? "Hủy đăng nhập" : "Đóng") {
                         password = ""
                         Task { await session.logout(); dismiss() }
-                    }.disabled(session.state.clearing)
+                    }.disabled(session.state.clearing || session.isSessionTransitioning)
                 }
             }
             .interactiveDismissDisabled(isLoading)
@@ -49,6 +59,14 @@ struct BinblogLoginView: View {
     @MainActor private func login() async {
         await session.login(username: username, password: password)
         password = ""
+        if session.state.phase == .authenticated {
+            onSuccess()
+            dismiss()
+        }
+    }
+
+    @MainActor private func loginWithGoogle() async {
+        await session.loginWithGoogle()
         if session.state.phase == .authenticated {
             onSuccess()
             dismiss()

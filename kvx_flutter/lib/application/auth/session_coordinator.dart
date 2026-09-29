@@ -126,14 +126,17 @@ class SessionCoordinator implements SessionAccess {
       if (!_currentIntent(intent)) {
         throw const SessionFailure(SessionFailureKind.stale);
       }
-      final failure = error is SessionFailure
+      final failure =
+          error is SessionFailure || error is AuthenticationAttemptFailure
           ? error
           : const SessionFailure(SessionFailureKind.login);
       _publish(
         SessionState(
           phase: SessionPhase.signedOut,
           generation: _state.generation,
-          message: failure.kind == SessionFailureKind.storage
+          message:
+              failure is SessionFailure &&
+                  failure.kind == SessionFailureKind.storage
               ? failure.toString()
               : null,
         ),

@@ -85,7 +85,7 @@ actor SessionCoordinator: SessionAuthorizing {
             // A failed/ambiguous write needs durable clearing before another login.
             if case SessionFailure.storage = error { state.message = SessionFailure.storage.localizedDescription }
             publish()
-            if error is SessionFailure { throw error }
+            if error is SessionFailure || error is AuthenticationAttemptFailure { throw error }
             throw SessionFailure.login
         }
     }

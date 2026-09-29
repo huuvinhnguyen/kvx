@@ -34,6 +34,48 @@ nonisolated enum SessionFailure: Error, LocalizedError {
     }
 }
 
+nonisolated enum AuthenticationAttemptFailure: Error, LocalizedError, Equatable, Sendable {
+    case userCancelled
+    case providerFailure
+    case providerConfigurationFailure
+    case missingCredential
+    case networkFailure
+    case invalidProviderCredential
+    case linkRequired
+    case emailVerificationRequired
+    case providerUnavailable
+    case usernameUnavailable
+    case malformedResponse
+    case serverFailure
+
+    var errorDescription: String? {
+        switch self {
+        case .userCancelled:
+            return nil
+        case .providerFailure:
+            return "Không thể đăng nhập bằng Google. Hãy thử lại."
+        case .providerConfigurationFailure:
+            return "Đăng nhập Google chưa được cấu hình cho bản dựng này."
+        case .missingCredential:
+            return "Google không trả về thông tin đăng nhập hợp lệ. Hãy thử lại."
+        case .networkFailure:
+            return "Không thể kết nối để đăng nhập. Kiểm tra mạng rồi thử lại."
+        case .invalidProviderCredential:
+            return "Phiên Google không còn hợp lệ. Hãy đăng nhập Google lại."
+        case .linkRequired:
+            return "Email này đã thuộc một tài khoản Binblog. Hãy đăng nhập bằng mật khẩu trước; ứng dụng sẽ không tự động liên kết tài khoản."
+        case .emailVerificationRequired:
+            return "Tài khoản Google cần có email đã xác minh để đăng nhập."
+        case .providerUnavailable:
+            return "Google tạm thời không khả dụng. Hãy thử lại sau."
+        case .usernameUnavailable:
+            return "Chưa thể tạo tài khoản Binblog. Hãy thử lại sau."
+        case .malformedResponse, .serverFailure:
+            return "Binblog chưa thể hoàn tất đăng nhập Google. Hãy thử lại sau."
+        }
+    }
+}
+
 nonisolated protocol SessionStore: Sendable {
     func read() async throws -> StoredSession?
     func write(_ value: StoredSession) async throws
@@ -42,6 +84,15 @@ nonisolated protocol SessionStore: Sendable {
 
 nonisolated protocol PasswordAuthenticating: Sendable {
     func login(username: String, password: String) async throws -> String
+}
+
+nonisolated protocol GoogleCredentialProviding: Sendable {
+    @MainActor func credential() async throws -> String
+    @MainActor func signOut() async throws
+}
+
+nonisolated protocol SocialSessionExchanging: Sendable {
+    func exchange(provider: String, credential: String) async throws -> String
 }
 
 nonisolated protocol SessionAuthorizing: Sendable {

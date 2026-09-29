@@ -10,6 +10,7 @@ import SwiftUI
 struct DeviceDetailView: View {
     let device: Device
     let buzzerUseCases: BuzzerUseCases
+    var pirRepository: any PIRRepository = PIRAPIClient()
     @State private var isOn = false
     @State private var schedules: [Schedule] = []
     @State private var showingAddSchedule = false
@@ -20,7 +21,7 @@ struct DeviceDetailView: View {
             BuzzerDetailView(device: device, useCases: buzzerUseCases)
                 .id(device.id)
         } else if device.type == .pir {
-            PIRDetailView(device: device)
+            PIRDetailView(device: device, repository: pirRepository)
         } else {
             legacyDetail
         }

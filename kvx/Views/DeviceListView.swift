@@ -8,11 +8,16 @@
 import SwiftUI
 
 struct DeviceListView: View {
+    @Environment(SessionViewModel.self) private var session
+    private let buzzerUseCases: BuzzerUseCases
+    private let pirRepository: any PIRRepository
     @State private var viewModel: DeviceViewModel
     @State private var showingAddSheet = false
     @State private var showingLogin = false
 
-    init(viewModel: DeviceViewModel) {
+    init(viewModel: DeviceViewModel, buzzerUseCases: BuzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient()), pirRepository: any PIRRepository = PIRAPIClient()) {
+        self.buzzerUseCases = buzzerUseCases
+        self.pirRepository = pirRepository
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -41,7 +46,7 @@ struct DeviceListView: View {
                 List {
                     ForEach(viewModel.filteredDevices) { device in
                         NavigationLink {
-                            DeviceDetailView(device: device, buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()))
+                            DeviceDetailView(device: device, buzzerUseCases: buzzerUseCases, pirRepository: pirRepository)
                         } label: {
                             DeviceRow(device: device)
                         }
@@ -73,6 +78,12 @@ struct DeviceListView: View {
             .navigationTitle("Devices")
             .searchable(text: $viewModel.searchText, prompt: "Search devices")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu("Tài khoản") {
+                        Button("Đổi tài khoản") { Task { await session.logout(reason: .switching) } }
+                        Button("Đăng xuất") { Task { await session.logout() } }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingAddSheet = true }) {
                         Image(systemName: "plus")

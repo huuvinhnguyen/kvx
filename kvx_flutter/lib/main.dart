@@ -1,57 +1,165 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import 'package:http/http.dart' as http;
+import 'application/auth/session_coordinator.dart';
+import 'domain/auth/session.dart';
+import 'data/auth/secure_session_store.dart';
+import 'data/auth/password_authenticator.dart';
+import 'data/auth/authenticated_transport.dart';
 import 'data/datasources/binblog_device_datasource.dart';
 import 'data/repositories/binblog_buzzer_repository.dart';
 import 'application/usecases/buzzer_usecases.dart';
 import 'data/repositories/device_repository_impl.dart';
 import 'application/usecases/device_usecases.dart';
 import 'presentation/providers/device_provider.dart';
+import 'presentation/providers/session_provider.dart';
 import 'presentation/screens/device_list_screen.dart';
+import 'presentation/screens/binblog_login_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const KvxApp());
 }
 
-class KvxApp extends StatelessWidget {
-  const KvxApp({super.key});
+class KvxApp extends StatefulWidget {
+  final SessionCoordinator? coordinator;
+  final http.Client? client;
+  const KvxApp({super.key, this.coordinator, this.client});
+  @override
+  State<KvxApp> createState() => _KvxAppState();
+}
+
+class _KvxAppState extends State<KvxApp> {
+  late final http.Client _client;
+  late final SessionCoordinator _coordinator;
+  late final SessionProvider _session;
+  @override
+  void initState() {
+    super.initState();
+    _client = widget.client ?? http.Client();
+    _coordinator =
+        widget.coordinator ??
+        SessionCoordinator(
+          store: const SecureSessionStore(),
+          authentication: BinblogPasswordAuthenticator(_client),
+        );
+    _session = SessionProvider(_coordinator);
+    unawaited(_session.restore());
+  }
 
   @override
-  Widget build(BuildContext context) {
-    const username = String.fromEnvironment('BINBLOG_USERNAME');
-    const password = String.fromEnvironment('BINBLOG_PASSWORD');
-    final dataSource = BinblogDeviceDataSource(
-      username: username,
-      password: password,
-    );
-    final repository = DeviceRepositoryImpl(dataSource);
+  void dispose() {
+    _session.dispose();
+    if (widget.coordinator == null) _coordinator.dispose();
+    if (widget.client == null) _client.close();
+    super.dispose();
+  }
 
-    return MultiProvider(
-      providers: [
-        Provider<BinblogDeviceDataSource>(
-          create: (_) => dataSource,
-          dispose: (_, source) => source.close(),
-        ),
-        Provider<BuzzerUseCases>(
-          create: (_) => BuzzerUseCases(BinblogBuzzerRepository(dataSource)),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => DeviceProvider(
-            getDevicesUseCase: GetDevicesUseCase(repository),
-            addDeviceUseCase: AddDeviceUseCase(repository),
-            deleteDeviceUseCase: DeleteDeviceUseCase(repository),
-            toggleStatusUseCase: ToggleDeviceStatusUseCase(repository),
-          ),
-        ),
-      ],
-      child: MaterialApp(
-        title: 'KVX',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-          useMaterial3: true,
-        ),
-        home: const DeviceListScreen(),
+  @override
+  Widget build(BuildContext context) => ChangeNotifierProvider.value(
+    value: _session,
+    child: Consumer<SessionProvider>(
+      builder: (context, session, _) {
+        final state = session.state;
+        if (state.phase == SessionPhase.authenticated) {
+          return _AuthenticatedApp(
+            key: ValueKey(state.generation),
+            coordinator: _coordinator,
+            generation: state.generation,
+            client: _client,
+          );
+        }
+        return MaterialApp(
+          title: 'KVX',
+          theme: _theme(),
+          home:
+              state.phase == SessionPhase.unknown ||
+                  state.phase == SessionPhase.restoring
+              ? Scaffold(
+                  body: Center(
+                    child: state.message == null
+                        ? const CircularProgressIndicator(
+                            semanticsLabel: 'Đang khôi phục phiên',
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(state.message!),
+                              TextButton(
+                                onPressed: session.restore,
+                                child: const Text('Thử lại'),
+                              ),
+                              TextButton(
+                                onPressed: () => session.logout(),
+                                child: const Text('Đăng xuất'),
+                              ),
+                            ],
+                          ),
+                  ),
+                )
+              : const BinblogLoginScreen(),
+        );
+      },
+    ),
+  );
+}
+
+ThemeData _theme() => ThemeData(
+  colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+  useMaterial3: true,
+);
+
+class _AuthenticatedApp extends StatefulWidget {
+  final SessionCoordinator coordinator;
+  final int generation;
+  final http.Client client;
+  const _AuthenticatedApp({
+    super.key,
+    required this.coordinator,
+    required this.generation,
+    required this.client,
+  });
+  @override
+  State<_AuthenticatedApp> createState() => _AuthenticatedAppState();
+}
+
+class _AuthenticatedAppState extends State<_AuthenticatedApp> {
+  late final BinblogDeviceDataSource _source;
+  late final DeviceRepositoryImpl _repository;
+  @override
+  void initState() {
+    super.initState();
+    _source = BinblogDeviceDataSource(
+      transport: AuthenticatedTransport(
+        authority: widget.coordinator,
+        generation: widget.generation,
+        client: widget.client,
       ),
     );
+    _repository = DeviceRepositoryImpl(_source);
   }
+
+  @override
+  Widget build(BuildContext context) => MultiProvider(
+    providers: [
+      Provider<BinblogDeviceDataSource>.value(value: _source),
+      Provider<BuzzerUseCases>(
+        create: (_) => BuzzerUseCases(BinblogBuzzerRepository(_source)),
+      ),
+      ChangeNotifierProvider(
+        create: (_) => DeviceProvider(
+          getDevicesUseCase: GetDevicesUseCase(_repository),
+          addDeviceUseCase: AddDeviceUseCase(_repository),
+          deleteDeviceUseCase: DeleteDeviceUseCase(_repository),
+          toggleStatusUseCase: ToggleDeviceStatusUseCase(_repository),
+        ),
+      ),
+    ],
+    child: MaterialApp(
+      title: 'KVX',
+      theme: _theme(),
+      home: const DeviceListScreen(),
+    ),
+  );
 }

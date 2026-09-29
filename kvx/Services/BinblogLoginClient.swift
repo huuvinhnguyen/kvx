@@ -1,6 +1,6 @@
 import Foundation
 
-struct BinblogLoginClient {
+nonisolated struct BinblogLoginClient: PasswordAuthenticating {
     var session: URLSession = .shared
 
     func login(username: String, password: String) async throws -> String {
@@ -13,7 +13,7 @@ struct BinblogLoginClient {
         guard let response = response as? HTTPURLResponse else { throw DeviceAPIError.invalidResponse }
         guard response.statusCode == 200 else { throw DeviceAPIError.httpStatus(response.statusCode) }
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
-        guard !result.token.isEmpty else { throw DeviceAPIError.missingAccessToken }
+        guard !result.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeviceAPIError.missingAccessToken }
         return result.token
     }
 

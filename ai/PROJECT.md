@@ -27,7 +27,8 @@ The repository contains native Swift and Flutter implementations that should pro
 ### External integration
 
 - BinBlog device API
-- Credentials are supplied at build or run time through `BINBLOG_USERNAME` and `BINBLOG_PASSWORD`.
+- Password login is explicit in each app. Build-time credentials are not used for automatic authentication.
+- The Binblog JWT is restored locally from secure storage; current-generation 401 responses invalidate the central session.
 - Credentials and access tokens must not be committed to source control.
 
 ## Architecture

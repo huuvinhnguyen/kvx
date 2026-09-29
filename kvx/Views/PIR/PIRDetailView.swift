@@ -3,7 +3,12 @@ import Charts
 
 struct PIRDetailView: View {
     let device: Device
-    @StateObject private var model = PIRViewModel()
+    @StateObject private var model: PIRViewModel
+
+    init(device: Device, repository: any PIRRepository = PIRAPIClient()) {
+        self.device = device
+        _model = StateObject(wrappedValue: PIRViewModel(repository: repository))
+    }
     @State private var selectedHour: Int?
     private let accent = Color(red: 0.20, green: 0.83, blue: 0.60)
     private let surface = Color(red: 0.08, green: 0.13, blue: 0.14)

@@ -41,7 +41,11 @@ struct DeviceListView: View {
                 List {
                     ForEach(viewModel.filteredDevices) { device in
                         NavigationLink {
-                            DeviceDetailView(device: device, buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()))
+                            DeviceDetailView(
+                                device: device,
+                                buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()),
+                                pirTriggerActionUseCases: PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient())
+                            )
                         } label: {
                             DeviceRow(device: device)
                         }

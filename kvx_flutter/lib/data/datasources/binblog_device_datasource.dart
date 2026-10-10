@@ -42,15 +42,19 @@ class BinblogDeviceDataSource implements DeviceDataSource {
         .timeout(const Duration(seconds: 20));
     if (response.statusCode == 401) _accessToken = null;
     if (response.statusCode != 200) {
-      throw BinblogApiException(
+      throw _apiError(
+        response,
         'Không tải được dữ liệu (${response.statusCode}). Hãy thử lại.',
-        statusCode: response.statusCode,
       );
     }
     return _decodeObject(response.body);
   }
 
-  Future<Map<String, dynamic>> postJson(String path, {String? body}) async {
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    String? body,
+    Set<int> successStatusCodes = const {200},
+  }) async {
     final token = await _token();
     final response = await _client
         .post(
@@ -64,13 +68,33 @@ class BinblogDeviceDataSource implements DeviceDataSource {
         )
         .timeout(const Duration(seconds: 20));
     if (response.statusCode == 401) _accessToken = null;
-    if (response.statusCode != 200) {
+    if (!successStatusCodes.contains(response.statusCode)) {
       final retry = int.tryParse(response.headers['retry-after'] ?? '') ?? 3;
-      throw BinblogApiException(
-        'Không gửi được lệnh.',
-        statusCode: response.statusCode,
-        retryAfterSeconds: retry.clamp(1, 60),
-      );
+      throw _apiError(response, 'Không gửi được lệnh.', retry.clamp(1, 60));
+    }
+    return _decodeObject(response.body);
+  }
+
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    required String body,
+    Set<int> successStatusCodes = const {200},
+  }) async {
+    final token = await _token();
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/$path'),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: body,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode == 401) _accessToken = null;
+    if (!successStatusCodes.contains(response.statusCode)) {
+      throw _apiError(response, 'Không cập nhật được cấu hình.');
     }
     return _decodeObject(response.body);
   }
@@ -88,10 +112,7 @@ class BinblogDeviceDataSource implements DeviceDataSource {
         .timeout(const Duration(seconds: 20));
     if (response.statusCode == 401) _accessToken = null;
     if (response.statusCode != 200) {
-      throw BinblogApiException(
-        'Không cập nhật được cấu hình.',
-        statusCode: response.statusCode,
-      );
+      throw _apiError(response, 'Không cập nhật được cấu hình.');
     }
     return _decodeObject(response.body);
   }
@@ -156,17 +177,44 @@ class BinblogDeviceDataSource implements DeviceDataSource {
     }
     return decoded;
   }
+
+  BinblogApiException _apiError(
+    http.Response response,
+    String fallback, [
+    int retryAfterSeconds = 3,
+  ]) {
+    String? code;
+    String message = fallback;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        code = decoded['code'] as String?;
+        message =
+            decoded['message'] as String? ??
+            decoded['error'] as String? ??
+            fallback;
+      }
+    } catch (_) {}
+    return BinblogApiException(
+      message,
+      statusCode: response.statusCode,
+      retryAfterSeconds: retryAfterSeconds,
+      code: code,
+    );
+  }
 }
 
 class BinblogApiException implements Exception {
   final String message;
   final int? statusCode;
   final int retryAfterSeconds;
+  final String? code;
 
   const BinblogApiException(
     this.message, {
     this.statusCode,
     this.retryAfterSeconds = 3,
+    this.code,
   });
 
   @override

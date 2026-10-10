@@ -10,6 +10,7 @@ import SwiftUI
 struct DeviceDetailView: View {
     let device: Device
     let buzzerUseCases: BuzzerUseCases
+    let pirTriggerActionUseCases: PIRTriggerActionUseCases
     @State private var isOn = false
     @State private var schedules: [Schedule] = []
     @State private var showingAddSchedule = false
@@ -20,7 +21,7 @@ struct DeviceDetailView: View {
             BuzzerDetailView(device: device, useCases: buzzerUseCases)
                 .id(device.id)
         } else if device.type == .pir {
-            PIRDetailView(device: device)
+            PIRDetailView(device: device, triggerActionUseCases: pirTriggerActionUseCases)
         } else {
             legacyDetail
         }
@@ -357,6 +358,10 @@ struct AddScheduleSheet: View {
 
 #Preview {
     NavigationStack {
-        DeviceDetailView(device: Device.sampleDevices[0], buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()))
+        DeviceDetailView(
+            device: Device.sampleDevices[0],
+            buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()),
+            pirTriggerActionUseCases: PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient())
+        )
     }
 }

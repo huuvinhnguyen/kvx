@@ -3,14 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/datasources/binblog_device_datasource.dart';
 import '../../data/repositories/pir_repository.dart';
+import '../../application/usecases/pir_trigger_action_use_cases.dart';
 import '../../domain/entities/device.dart';
 import '../../domain/entities/pir_statistics.dart';
 import '../extensions/device_presentation.dart';
+import 'pir_trigger_actions_screen.dart';
 
 class PirDetailScreen extends StatefulWidget {
   final Device device;
   final PirRepository? repository;
-  const PirDetailScreen({super.key, required this.device, this.repository});
+  final PirTriggerActionUseCases? triggerActionUseCases;
+  const PirDetailScreen({
+    super.key,
+    required this.device,
+    this.repository,
+    this.triggerActionUseCases,
+  });
   @override
   State<PirDetailScreen> createState() => _PirDetailScreenState();
 }
@@ -85,6 +93,19 @@ class _PirDetailScreenState extends State<PirDetailScreen> {
     _load();
   }
 
+  void _openTriggerActions(BuildContext context) {
+    final useCases =
+        widget.triggerActionUseCases ??
+        context.read<PirTriggerActionUseCases>();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            PirTriggerActionsScreen(device: widget.device, useCases: useCases),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Theme(
     data: ThemeData.dark(useMaterial3: true).copyWith(
@@ -99,6 +120,11 @@ class _PirDetailScreenState extends State<PirDetailScreen> {
         appBar: AppBar(
           title: const Text('Thiết bị PIR'),
           actions: [
+            IconButton(
+              tooltip: 'Hành động PIR',
+              onPressed: () => _openTriggerActions(context),
+              icon: const Icon(Icons.account_tree_outlined),
+            ),
             IconButton(
               tooltip: 'Làm mới',
               onPressed: _load,

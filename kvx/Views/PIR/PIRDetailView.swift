@@ -3,6 +3,7 @@ import Charts
 
 struct PIRDetailView: View {
     let device: Device
+    let triggerActionUseCases: PIRTriggerActionUseCases
     @StateObject private var model = PIRViewModel()
     @State private var selectedHour: Int?
     private let accent = Color(red: 0.20, green: 0.83, blue: 0.60)
@@ -24,6 +25,18 @@ struct PIRDetailView: View {
                     }.font(.caption)
                     Text(device.chipID ?? "Chưa có mã chip").font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
+
+                NavigationLink {
+                    PIRTriggerActionsView(device: device, useCases: triggerActionUseCases)
+                } label: {
+                    card {
+                        Label("Hành động khi phát hiện chuyển động", systemImage: "point.3.connected.trianglepath.dotted")
+                            .font(.headline).foregroundStyle(accent)
+                        Text("Quản lý switch và buzzer được kích hoạt bởi PIR này.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
 
                 card {
                     Text("Phát hiện chuyển động").font(.headline)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../application/usecases/buzzer_usecases.dart';
+import '../../application/usecases/pir_trigger_action_use_cases.dart';
 import 'buzzer_detail_screen.dart';
 import 'pir_detail_screen.dart';
 import '../../domain/entities/device.dart';
@@ -95,7 +96,10 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       );
     }
     if (widget.device.type == DeviceType.pir) {
-      return PirDetailScreen(device: widget.device);
+      return PirDetailScreen(
+        device: widget.device,
+        triggerActionUseCases: context.read<PirTriggerActionUseCases>(),
+      );
     }
     return Scaffold(
       appBar: AppBar(title: Text(widget.device.name)),

@@ -11,10 +11,11 @@ struct ContentView: View {
     let viewModel: DeviceViewModel
     var buzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient())
     var pirRepository: any PIRRepository = PIRAPIClient()
+    var pirTriggerActionUseCases = PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient())
     var accountMethodsView: AnyView?
 
     var body: some View {
-        DeviceListView(viewModel: viewModel, buzzerUseCases: buzzerUseCases, pirRepository: pirRepository, accountMethodsView: accountMethodsView)
+        DeviceListView(viewModel: viewModel, buzzerUseCases: buzzerUseCases, pirRepository: pirRepository, pirTriggerActionUseCases: pirTriggerActionUseCases, accountMethodsView: accountMethodsView)
     }
 }
 

@@ -3,10 +3,12 @@ import Charts
 
 struct PIRDetailView: View {
     let device: Device
+    let triggerActionUseCases: PIRTriggerActionUseCases
     @StateObject private var model: PIRViewModel
 
-    init(device: Device, repository: any PIRRepository = PIRAPIClient()) {
+    init(device: Device, repository: any PIRRepository = PIRAPIClient(), triggerActionUseCases: PIRTriggerActionUseCases) {
         self.device = device
+        self.triggerActionUseCases = triggerActionUseCases
         _model = StateObject(wrappedValue: PIRViewModel(repository: repository))
     }
     @State private var selectedHour: Int?
@@ -29,6 +31,18 @@ struct PIRDetailView: View {
                     }.font(.caption)
                     Text(device.chipID ?? "Chưa có mã chip").font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
+
+                NavigationLink {
+                    PIRTriggerActionsView(device: device, useCases: triggerActionUseCases)
+                } label: {
+                    card {
+                        Label("Hành động khi phát hiện chuyển động", systemImage: "point.3.connected.trianglepath.dotted")
+                            .font(.headline).foregroundStyle(accent)
+                        Text("Quản lý switch và buzzer được kích hoạt bởi PIR này.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
 
                 card {
                     Text("Phát hiện chuyển động").font(.headline)

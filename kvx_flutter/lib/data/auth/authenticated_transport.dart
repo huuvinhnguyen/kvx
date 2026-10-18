@@ -15,7 +15,7 @@ class AuthenticatedTransport {
     final request = http.Request(method, url);
     request.headers['Accept'] = 'application/json';
     request.headers['Authorization'] = 'Bearer ${snapshot.token}';
-    if (method == 'POST') {
+    if (method == 'POST' || method == 'PUT') {
       request.headers['Content-Type'] = 'application/json';
       if (body != null) request.body = body;
     }

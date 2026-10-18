@@ -14,6 +14,8 @@ import 'data/auth/social_session_client.dart';
 import 'data/datasources/binblog_device_datasource.dart';
 import 'data/repositories/binblog_buzzer_repository.dart';
 import 'application/usecases/buzzer_usecases.dart';
+import 'application/usecases/pir_trigger_action_use_cases.dart';
+import 'data/repositories/binblog_pir_trigger_action_repository.dart';
 import 'data/repositories/device_repository_impl.dart';
 import 'application/usecases/device_usecases.dart';
 import 'presentation/providers/device_provider.dart';
@@ -189,6 +191,11 @@ class _AuthenticatedAppState extends State<_AuthenticatedApp> {
   Widget build(BuildContext context) => MultiProvider(
     providers: [
       Provider<BinblogDeviceDataSource>.value(value: _source),
+      Provider<PirTriggerActionUseCases>(
+        create: (_) => PirTriggerActionUseCases(
+          BinblogPirTriggerActionRepository(_source),
+        ),
+      ),
       Provider<BuzzerUseCases>(
         create: (_) => BuzzerUseCases(BinblogBuzzerRepository(_source)),
       ),

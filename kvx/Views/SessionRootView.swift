@@ -49,6 +49,7 @@ private struct AuthenticatedContent: View {
     @State private var devices: DeviceViewModel
     let accountMethodsContinuity: AccountMethodsContinuity
     private let buzzerUseCases: BuzzerUseCases
+    private let pirTriggerActionUseCases: PIRTriggerActionUseCases
     private let pirRepository: PIRAPIClient
 
     init(coordinator: SessionCoordinator, generation: UInt64,
@@ -60,9 +61,11 @@ private struct AuthenticatedContent: View {
         _devices = State(initialValue: DeviceViewModel(repository: RemoteDeviceRepository(dataSource: BinblogDeviceDataSource(transport: transport))))
         buzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient(transport: transport))
         pirRepository = PIRAPIClient(transport: transport)
+        pirTriggerActionUseCases = PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient(transport: transport))
     }
     var body: some View {
         ContentView(viewModel: devices, buzzerUseCases: buzzerUseCases, pirRepository: pirRepository,
+                    pirTriggerActionUseCases: pirTriggerActionUseCases,
                     accountMethodsView: AnyView(AccountMethodsView(coordinator: coordinator, generation: generation,
                                                                     continuity: accountMethodsContinuity)))
     }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'application/auth/session_coordinator.dart';
 import 'application/auth/google_sign_in_use_case.dart';
+import 'application/auth/account_authentication_controller.dart';
 import 'domain/auth/session.dart';
 import 'data/auth/secure_session_store.dart';
 import 'data/auth/password_authenticator.dart';
@@ -19,6 +20,7 @@ import 'presentation/providers/device_provider.dart';
 import 'presentation/providers/session_provider.dart';
 import 'presentation/screens/device_list_screen.dart';
 import 'presentation/screens/binblog_login_screen.dart';
+import 'presentation/screens/account_methods_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,6 +90,7 @@ class _KvxAppState extends State<KvxApp> {
             key: ValueKey(state.generation),
             coordinator: _coordinator,
             generation: state.generation,
+            gate: state.reconciliation,
             client: _client,
           );
         }
@@ -134,11 +137,13 @@ ThemeData _theme() => ThemeData(
 class _AuthenticatedApp extends StatefulWidget {
   final SessionCoordinator coordinator;
   final int generation;
+  final ReconciliationGate gate;
   final http.Client client;
   const _AuthenticatedApp({
     super.key,
     required this.coordinator,
     required this.generation,
+    required this.gate,
     required this.client,
   });
   @override
@@ -148,9 +153,14 @@ class _AuthenticatedApp extends StatefulWidget {
 class _AuthenticatedAppState extends State<_AuthenticatedApp> {
   late final BinblogDeviceDataSource _source;
   late final DeviceRepositoryImpl _repository;
+  late final AccountMethodsContinuity _accountMethodsContinuity;
   @override
   void initState() {
     super.initState();
+    _accountMethodsContinuity = AccountMethodsContinuity(
+      widget.generation,
+      gate: widget.gate,
+    );
     _source = BinblogDeviceDataSource(
       transport: AuthenticatedTransport(
         authority: widget.coordinator,
@@ -159,6 +169,20 @@ class _AuthenticatedAppState extends State<_AuthenticatedApp> {
       ),
     );
     _repository = DeviceRepositoryImpl(_source);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AuthenticatedApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.gate != widget.gate) {
+      _accountMethodsContinuity.applyGate(widget.gate);
+    }
+  }
+
+  @override
+  void dispose() {
+    _accountMethodsContinuity.invalidate();
+    super.dispose();
   }
 
   @override
@@ -180,7 +204,14 @@ class _AuthenticatedAppState extends State<_AuthenticatedApp> {
     child: MaterialApp(
       title: 'KVX',
       theme: _theme(),
-      home: const DeviceListScreen(),
+      home: DeviceListScreen(
+        accountMethodsBuilder: (_) => AccountMethodsScreen(
+          authority: widget.coordinator,
+          generation: widget.generation,
+          client: widget.client,
+          continuity: _accountMethodsContinuity,
+        ),
+      ),
     ),
   );
 }

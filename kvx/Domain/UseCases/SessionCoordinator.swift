@@ -4,7 +4,9 @@ actor SessionCoordinator: SessionAuthorizing {
     private let store: any SessionStore
     private let authentication: any PasswordAuthenticating
     private var token: String?
+    private var record: ActiveSessionRecord?
     private var revision: UInt64 = 0
+    private var preparingID: String?
     private var persistenceTail: Task<Void, Never> = Task {}
     private var observers: [UUID: AsyncStream<SessionState>.Continuation] = [:]
     private(set) var state = SessionState()
@@ -42,11 +44,28 @@ actor SessionCoordinator: SessionAuthorizing {
         do {
             let stored = try await serialized { [store] in try await store.read() }
             guard revision == intent else { return }
-            if case .active(let candidate) = stored {
+            switch stored {
+            case .active(let candidate):
                 guard !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SessionFailure.invalidToken }
                 token = candidate
-                state = SessionState(phase: .authenticated, generation: state.generation + 1)
-            } else { state.phase = .signedOut }
+                record = nil
+                state = SessionState(phase: .authenticated, generation: state.generation + 1, reconciliation: .legacy)
+            case .quarantined(let candidate):
+                guard !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SessionFailure.invalidToken }
+                token = candidate
+                record = nil
+                state = SessionState(phase: .authenticated, generation: state.generation + 1, reconciliation: .corrupt)
+            case .managed(let restored):
+                guard !restored.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw SessionFailure.invalidToken
+                }
+                token = restored.token
+                record = restored
+                state = SessionState(phase: .authenticated, generation: state.generation + 1,
+                                     reconciliation: .from(restored.marker))
+            case .signedOut, nil:
+                state.phase = .signedOut
+            }
             publish()
         } catch {
             guard revision == intent else { return }
@@ -73,11 +92,18 @@ actor SessionCoordinator: SessionAuthorizing {
             let candidate = try await exchange()
             guard revision == intent else { throw SessionFailure.stale }
             guard !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SessionFailure.invalidToken }
-            do { try await serialized { [store] in try await store.write(.active(candidate)) } }
+            let installed = ActiveSessionRecord(token: candidate)
+            do {
+                try await serialized { [store] in
+                    try await store.write(.managed(installed))
+                    guard try await store.read() == .managed(installed) else { throw SessionFailure.storage }
+                }
+            }
             catch { throw SessionFailure.storage }
             guard revision == intent else { throw SessionFailure.stale }
             token = candidate
-            state = SessionState(phase: .authenticated, generation: state.generation + 1)
+            record = installed
+            state = SessionState(phase: .authenticated, generation: state.generation + 1, reconciliation: .clean)
             publish()
         } catch {
             guard revision == intent else { throw SessionFailure.stale }
@@ -95,12 +121,16 @@ actor SessionCoordinator: SessionAuthorizing {
         revision += 1
         let intent = revision
         token = nil
+        record = nil
+        preparingID = nil
         state = SessionState(phase: .signedOut, generation: state.generation + 1, reason: reason, clearing: true)
         publish()
         do {
             try await serialized { [store] in
                 do { try await store.write(.signedOut) }
                 catch { try await store.delete() }
+                let stored = try await store.read()
+                guard stored == nil || stored == .signedOut else { throw SessionFailure.storage }
             }
             guard revision == intent else { return false }
             state.clearing = false
@@ -134,5 +164,101 @@ actor SessionCoordinator: SessionAuthorizing {
         guard isCurrent(generation) else { return false }
         _ = await logout(reason: .expired)
         return true
+    }
+
+    func reconciliationGate(_ generation: UInt64) async throws -> ReconciliationGate {
+        guard isCurrent(generation) else { throw SessionFailure.stale }
+        return state.reconciliation
+    }
+
+    func pendingMutation(_ generation: UInt64) async throws -> MutationLease? {
+        guard isCurrent(generation) else { throw SessionFailure.stale }
+        guard let record else { return nil }
+        guard let marker = record.marker else { return nil }
+        return MutationLease(generation: generation, sessionID: record.sessionID, marker: marker)
+    }
+
+    func prepareMutation(_ operation: ReconciliationOperation, generation: UInt64) async throws -> MutationLease {
+        guard isCurrent(generation), state.reconciliation == .clean, let current = record,
+              current.marker == nil, preparingID == nil, !Task.isCancelled else { throw SessionFailure.storage }
+        let intent = revision
+        let marker = ReconciliationMarker(operation: operation)
+        preparingID = marker.operationID
+        defer { if preparingID == marker.operationID { preparingID = nil } }
+        let updated = current.replacing(marker: marker)
+        let lease = MutationLease(generation: generation, sessionID: current.sessionID, marker: marker)
+        do {
+            try await serialized { [store] in
+                guard try await store.read() == .managed(current) else { throw SessionFailure.storage }
+                try await store.write(.managed(updated))
+                guard try await store.read() == .managed(updated) else { throw SessionFailure.storage }
+            }
+        } catch {
+            if revision == intent && isCurrent(generation) {
+                state.reconciliation = .storageBlocked
+                publish()
+            }
+            throw SessionFailure.storage
+        }
+        guard revision == intent, isCurrent(generation) else { throw SessionFailure.stale }
+        record = updated
+        state.reconciliation = .from(marker)
+        publish()
+        guard !Task.isCancelled else { throw SessionFailure.stale }
+        return lease
+    }
+
+    func dispatchPrepared(_ lease: MutationLease, start: @Sendable () -> Void) async throws {
+        guard isCurrent(lease.generation), record?.sessionID == lease.sessionID,
+              record?.marker == lease.marker,
+              state.reconciliation == .from(lease.marker) else { throw SessionFailure.stale }
+        start()
+    }
+
+    func clearMutation(_ lease: MutationLease, resolution: MarkerResolution) async throws {
+        guard isCurrent(lease.generation), record?.sessionID == lease.sessionID,
+              record?.marker == lease.marker else { throw SessionFailure.stale }
+        switch (lease.marker.operation, resolution) {
+        case (_, .provenNotDispatched), (.unlinkGoogle, .providerAbsent),
+             (.unlinkGoogle, .lastMethodRejected), (.rotateRecoveryCodes, .codesAcknowledged): break
+        default: throw SessionFailure.storage
+        }
+        let intent = revision
+        let expected = record!
+        let clean = expected.replacing(marker: nil)
+        do {
+            try await serialized { [store] in
+                guard try await store.read() == .managed(expected) else { throw SessionFailure.storage }
+                try await store.write(.managed(clean))
+                guard try await store.read() == .managed(clean) else { throw SessionFailure.storage }
+            }
+        } catch {
+            if revision == intent && isCurrent(lease.generation), record?.marker == lease.marker {
+                state.reconciliation = .storageBlocked
+                publish()
+            }
+            throw SessionFailure.storage
+        }
+        guard revision == intent, isCurrent(lease.generation), record?.marker == lease.marker else { throw SessionFailure.stale }
+        record = clean
+        state.reconciliation = .clean
+        publish()
+    }
+
+    func refreshReconciliation(_ generation: UInt64) async throws -> ReconciliationGate {
+        guard isCurrent(generation), let current = record else { throw SessionFailure.storage }
+        let intent = revision
+        let stored = try await serialized { [store] in try await store.read() }
+        guard revision == intent, isCurrent(generation), record == current else { throw SessionFailure.stale }
+        guard case .managed(let refreshed) = stored, refreshed.sessionID == current.sessionID,
+              refreshed.token == current.token else {
+            state.reconciliation = .storageBlocked
+            publish()
+            throw SessionFailure.storage
+        }
+        record = refreshed
+        state.reconciliation = .from(refreshed.marker)
+        publish()
+        return state.reconciliation
     }
 }

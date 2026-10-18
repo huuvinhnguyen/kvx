@@ -11,13 +11,15 @@ struct DeviceListView: View {
     @Environment(SessionViewModel.self) private var session
     private let buzzerUseCases: BuzzerUseCases
     private let pirRepository: any PIRRepository
+    private let accountMethodsView: AnyView?
     @State private var viewModel: DeviceViewModel
     @State private var showingAddSheet = false
     @State private var showingLogin = false
 
-    init(viewModel: DeviceViewModel, buzzerUseCases: BuzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient()), pirRepository: any PIRRepository = PIRAPIClient()) {
+    init(viewModel: DeviceViewModel, buzzerUseCases: BuzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient()), pirRepository: any PIRRepository = PIRAPIClient(), accountMethodsView: AnyView? = nil) {
         self.buzzerUseCases = buzzerUseCases
         self.pirRepository = pirRepository
+        self.accountMethodsView = accountMethodsView
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -82,6 +84,14 @@ struct DeviceListView: View {
                     Menu("Tài khoản") {
                         Button("Đổi tài khoản") { Task { await session.logout(reason: .switching) } }
                         Button("Đăng xuất") { Task { await session.logout() } }
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if let accountMethodsView {
+                        NavigationLink(destination: accountMethodsView) {
+                            Image(systemName: "person.crop.circle")
+                        }
+                        .accessibilityLabel("Phương thức đăng nhập")
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {

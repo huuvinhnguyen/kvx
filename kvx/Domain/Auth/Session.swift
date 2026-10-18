@@ -9,11 +9,67 @@ nonisolated struct SessionState: Equatable, Sendable {
     var reason: SignOutReason = .none
     var message: String?
     var clearing = false
+    var reconciliation: ReconciliationGate = .unavailable
 }
 
-nonisolated enum StoredSession: Codable, Equatable, Sendable {
+nonisolated enum StoredSession: Equatable, Sendable {
     case active(String)
+    case managed(ActiveSessionRecord)
+    case quarantined(String)
     case signedOut
+}
+
+nonisolated enum ReconciliationOperation: String, Codable, Equatable, Sendable {
+    case unlinkGoogle = "unlink_google"
+    case rotateRecoveryCodes = "rotate_recovery_codes"
+}
+
+nonisolated struct ReconciliationMarker: Equatable, Sendable {
+    let operationID: String
+    let operation: ReconciliationOperation
+
+    init(operation: ReconciliationOperation, operationID: String = UUID().uuidString.lowercased()) {
+        self.operation = operation
+        self.operationID = operationID
+    }
+}
+
+nonisolated struct ActiveSessionRecord: Equatable, Sendable {
+    let token: String
+    let sessionID: String
+    let marker: ReconciliationMarker?
+
+    init(token: String, sessionID: String = UUID().uuidString.lowercased(), marker: ReconciliationMarker? = nil) {
+        self.token = token
+        self.sessionID = sessionID
+        self.marker = marker
+    }
+
+    func replacing(marker: ReconciliationMarker?) -> ActiveSessionRecord {
+        ActiveSessionRecord(token: token, sessionID: sessionID, marker: marker)
+    }
+}
+
+nonisolated enum ReconciliationGate: Equatable, Sendable {
+    case unavailable, clean, legacy, corrupt, pendingUnlink, pendingRotation, storageBlocked
+
+    static func from(_ marker: ReconciliationMarker?) -> ReconciliationGate {
+        switch marker?.operation {
+        case nil: .clean
+        case .unlinkGoogle: .pendingUnlink
+        case .rotateRecoveryCodes: .pendingRotation
+        }
+    }
+}
+
+nonisolated struct MutationLease: Equatable, Sendable {
+    let generation: UInt64
+    let sessionID: String
+    let marker: ReconciliationMarker
+}
+
+nonisolated enum MarkerResolution: Sendable {
+    case provenNotDispatched, providerAbsent, lastMethodRejected, codesAcknowledged
 }
 
 nonisolated struct SessionSnapshot: Sendable {
@@ -101,6 +157,20 @@ nonisolated protocol SessionAuthorizing: Sendable {
     // Starting the transport is synchronous within the owner's isolation.
     func dispatch(_ generation: UInt64, start: @Sendable () -> Void) async throws
     func unauthorized(_ generation: UInt64) async -> Bool
+    func prepareMutation(_ operation: ReconciliationOperation, generation: UInt64) async throws -> MutationLease
+    func pendingMutation(_ generation: UInt64) async throws -> MutationLease?
+    func clearMutation(_ lease: MutationLease, resolution: MarkerResolution) async throws
+    func dispatchPrepared(_ lease: MutationLease, start: @Sendable () -> Void) async throws
+    func reconciliationGate(_ generation: UInt64) async throws -> ReconciliationGate
+    func refreshReconciliation(_ generation: UInt64) async throws -> ReconciliationGate
+}
+
+extension SessionAuthorizing {
+    func prepareMutation(_ operation: ReconciliationOperation, generation: UInt64) async throws -> MutationLease { throw SessionFailure.storage }
+    func pendingMutation(_ generation: UInt64) async throws -> MutationLease? { throw SessionFailure.storage }
+    func clearMutation(_ lease: MutationLease, resolution: MarkerResolution) async throws { throw SessionFailure.storage }
+    func reconciliationGate(_ generation: UInt64) async throws -> ReconciliationGate { .unavailable }
+    func refreshReconciliation(_ generation: UInt64) async throws -> ReconciliationGate { throw SessionFailure.storage }
 }
 
 nonisolated struct NoSession: SessionAuthorizing {
@@ -108,4 +178,5 @@ nonisolated struct NoSession: SessionAuthorizing {
     func isCurrent(_ generation: UInt64) async -> Bool { false }
     func dispatch(_ generation: UInt64, start: @Sendable () -> Void) async throws { throw SessionFailure.signedOut }
     func unauthorized(_ generation: UInt64) async -> Bool { false }
+    func dispatchPrepared(_ lease: MutationLease, start: @Sendable () -> Void) async throws { throw SessionFailure.signedOut }
 }

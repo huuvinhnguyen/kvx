@@ -1,8 +1,7 @@
 import Foundation
 
 struct PIRTriggerActionAPIClient: PIRTriggerActionRepository {
-    var tokenProvider: any AccessTokenProvider = UserDefaultsAccessTokenProvider()
-    var session: URLSession = .shared
+    var transport = AuthenticatedTransport()
     var baseURL = URL(string: "https://khuonvien.vn")!
 
     func configuration(chipID: String) async throws -> PIRTriggerConfiguration {
@@ -107,23 +106,24 @@ struct PIRTriggerActionAPIClient: PIRTriggerActionRepository {
         mutation: Bool = false
     ) async throws -> Data {
         guard !chipID.isEmpty else { throw PIRTriggerActionFailure.unavailable(code: "source_not_found", message: "PIR chưa có mã chip.") }
-        guard let token = tokenProvider.accessToken, !token.isEmpty else { throw PIRTriggerActionFailure.authentication }
         guard let url = endpoint(chipID: chipID, suffix: suffix) else { throw PIRTriggerActionFailure.invalidResponse }
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
         }
         let data: Data
-        let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
-        catch { throw mutation ? PIRTriggerActionFailure.uncertainMutation : PIRTriggerActionFailure.connection }
-        guard let http = response as? HTTPURLResponse else {
-            throw mutation ? PIRTriggerActionFailure.uncertainMutation : PIRTriggerActionFailure.invalidResponse
+        let http: HTTPURLResponse
+        do { (data, http) = try await transport.data(for: request) }
+        catch let failure as SessionFailure {
+            switch failure {
+            case .signedOut, .stale: throw PIRTriggerActionFailure.authentication
+            default: throw mutation ? PIRTriggerActionFailure.uncertainMutation : PIRTriggerActionFailure.connection
+            }
         }
+        catch { throw mutation ? PIRTriggerActionFailure.uncertainMutation : PIRTriggerActionFailure.connection }
         if success.contains(http.statusCode) { return data }
         if http.statusCode == 401 { throw PIRTriggerActionFailure.authentication }
         guard let error = try? JSONDecoder().decode(PIRTriggerErrorDTO.self, from: data), error.status == "error" else {

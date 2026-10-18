@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import '../support/auth_fixture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kvx_flutter/application/usecases/pir_trigger_action_use_cases.dart';
-import 'package:kvx_flutter/data/datasources/binblog_device_datasource.dart';
 import 'package:kvx_flutter/data/models/pir_trigger_action_dto.dart';
 import 'package:kvx_flutter/data/repositories/binblog_pir_trigger_action_repository.dart';
 import 'package:kvx_flutter/domain/entities/pir_trigger_action.dart';
@@ -186,11 +186,13 @@ void main() {
     'repository uses exact methods, encoded path, zero delay and bodyless delete/migration',
     () async {
       final requests = <http.Request>[];
-      final source = BinblogDeviceDataSource(
-        username: 'fixture',
-        password: 'fixture',
+      final source = authenticatedFixture(
         client: MockClient((request) async {
           requests.add(request);
+          expect(request.headers['Authorization'], 'Bearer token');
+          if (request.method == 'PUT') {
+            expect(request.headers['Content-Type'], 'application/json');
+          }
           if (request.url.path == '/api/login') {
             return http.Response('{"token":"token"}', 200);
           }
@@ -249,6 +251,8 @@ void main() {
       await repository.reorder('pir/a', [9, 10]);
       await repository.delete('pir/a', 9);
       await repository.migrateLegacy('pir/a');
+      expect(requests, hasLength(7));
+      expect(requests.any((request) => request.url.path == '/api/login'), isFalse);
       final mutations = requests
           .where(
             (request) =>
@@ -286,9 +290,7 @@ void main() {
     'structured rejection remains definite and malformed success is uncertain',
     () async {
       Future<PirTriggerFailure> failureFor(http.Response response) async {
-        final source = BinblogDeviceDataSource(
-          username: 'x',
-          password: 'x',
+        final source = authenticatedFixture(
           client: MockClient(
             (request) async => request.url.path == '/api/login'
                 ? http.Response('{"token":"t"}', 200)
@@ -324,9 +326,7 @@ void main() {
   test(
     'feature-disabled reads remain distinguishable from connection errors',
     () async {
-      final source = BinblogDeviceDataSource(
-        username: 'x',
-        password: 'x',
+      final source = authenticatedFixture(
         client: MockClient(
           (request) async => request.url.path == '/api/login'
               ? http.Response('{"token":"t"}', 200)
@@ -358,9 +358,7 @@ void main() {
       Future<void> Function(BinblogPirTriggerActionRepository repository)
       operation,
     ) async {
-      final source = BinblogDeviceDataSource(
-        username: 'x',
-        password: 'x',
+      final source = authenticatedFixture(
         client: MockClient(
           (request) async => request.url.path == '/api/login'
               ? http.Response('{"token":"t"}', 200)

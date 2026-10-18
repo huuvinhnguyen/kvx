@@ -4,6 +4,7 @@ import '../../application/usecases/buzzer_usecases.dart';
 import '../../domain/entities/device.dart';
 import '../../domain/entities/buzzer_detail.dart';
 import '../providers/buzzer_provider.dart';
+import '../providers/session_provider.dart';
 
 class BuzzerDetailScreen extends StatelessWidget {
   final Device device;
@@ -80,7 +81,15 @@ class _BuzzerContent extends StatelessWidget {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
                 TextButton(
-                  onPressed: model.isBusy ? null : model.load,
+                  onPressed: model.isBusy
+                      ? null
+                      : () {
+                          if (model.needsLogin) {
+                            context.read<SessionProvider>().logout();
+                          } else {
+                            model.load();
+                          }
+                        },
                   child: Text(
                     model.needsLogin
                         ? 'Đăng nhập lại Binblog'

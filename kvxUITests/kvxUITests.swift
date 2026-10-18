@@ -23,12 +23,18 @@ final class kvxUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testSessionGateAndLogoutNavigation() throws {
         let app = XCUIApplication()
         app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        let login = app.navigationBars["Đăng nhập Binblog"]
+        let devices = app.navigationBars["Devices"]
+        XCTAssertTrue(login.waitForExistence(timeout: 5) || devices.waitForExistence(timeout: 5))
+        if devices.exists {
+            app.buttons["Tài khoản"].tap()
+            app.buttons["Đăng xuất"].tap()
+        }
+        XCTAssertTrue(login.waitForExistence(timeout: 5))
+        XCTAssertFalse(devices.exists)
     }
 
     @MainActor

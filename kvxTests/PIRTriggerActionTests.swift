@@ -44,7 +44,6 @@ private final class DeferredPIRTriggerRepository: PIRTriggerActionRepository {
     func migrateLegacy(chipID: String) async throws {}
 }
 
-private struct PIRTriggerTestToken: AccessTokenProvider { let accessToken: String? = "fixture-token" }
 
 private final class PIRTriggerHTTPStub: URLProtocol {
     nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, String))?
@@ -70,8 +69,14 @@ struct PIRTriggerActionTests {
     private func client(handler: @escaping (URLRequest) throws -> (Int, String)) -> PIRTriggerActionAPIClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PIRTriggerHTTPStub.self]
-        PIRTriggerHTTPStub.handler = handler
-        return PIRTriggerActionAPIClient(tokenProvider: PIRTriggerTestToken(), session: URLSession(configuration: configuration), baseURL: URL(string: "https://example.test")!)
+        PIRTriggerHTTPStub.handler = { request in
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token")
+            if request.httpMethod == "PUT" {
+                #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            }
+            return try handler(request)
+        }
+        return PIRTriggerActionAPIClient(transport: AuthenticatedTransport(authority: FixedTestSession(token: "fixture-token"), generation: 1, session: URLSession(configuration: configuration)), baseURL: URL(string: "https://example.test")!)
     }
 
     private func failure(_ operation: () async throws -> Void) async -> PIRTriggerActionFailure? {
@@ -96,7 +101,7 @@ struct PIRTriggerActionTests {
             #expect(request.httpMethod == "POST")
             #expect(request.url?.absoluteString.contains("pir%2Fa/trigger_actions") == true)
             #expect(request.url?.path.contains("/test") == false)
-            guard let body = request.httpBody,
+            guard let body = request.fixtureBody,
                   let json = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
                 throw PIRTriggerActionFailure.invalidResponse
             }
@@ -113,7 +118,7 @@ struct PIRTriggerActionTests {
             methods.append(request.httpMethod ?? "")
             switch (request.httpMethod, request.url?.path) {
             case ("PUT", let path?) where path.hasSuffix("/9"):
-                guard let body = request.httpBody,
+                guard let body = request.fixtureBody,
                       let json = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
                     throw PIRTriggerActionFailure.invalidResponse
                 }
@@ -121,10 +126,10 @@ struct PIRTriggerActionTests {
                 #expect(json["delay_ms"] as? Int == 0)
                 return (200, #"{"status":"success","action":\#(actionJSON)}"#)
             case ("DELETE", let path?) where path.hasSuffix("/9"):
-                #expect(request.httpBody == nil)
+                #expect(request.fixtureBody == nil)
                 return (200, #"{"status":"success","action_id":9}"#)
             case ("PUT", let path?) where path.hasSuffix("/order"):
-                guard let body = request.httpBody,
+                guard let body = request.fixtureBody,
                       let json = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
                     throw PIRTriggerActionFailure.invalidResponse
                 }
@@ -132,7 +137,7 @@ struct PIRTriggerActionTests {
                 let second = actionJSON.replacingOccurrences(of: "\"id\":9", with: "\"id\":10").replacingOccurrences(of: "\"position\":0", with: "\"position\":1")
                 return (200, #"{"status":"success","actions":[\#(actionJSON),\#(second)]}"#)
             case ("POST", let path?) where path.hasSuffix("/migrate_legacy"):
-                #expect(request.httpBody == nil)
+                #expect(request.fixtureBody == nil)
                 return (200, #"{"status":"success","migrated":true,"mode":"actions","action":\#(actionJSON)}"#)
             default: return (500, "{}")
             }
@@ -238,4 +243,22 @@ struct PIRTriggerActionTests {
 
 private extension Array {
     var single: Element? { count == 1 ? self[0] : nil }
+}
+
+private extension URLRequest {
+    var fixtureBody: Data? {
+        if let httpBody { return httpBody }
+        guard let stream = httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count >= 0 else { return nil }
+            if count == 0 { return data.isEmpty ? nil : data }
+            guard data.count + count <= 16 * 1024 else { return nil }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+    }
 }

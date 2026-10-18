@@ -1,6 +1,6 @@
 import Foundation
 
-struct RemoteDeviceRepository: DeviceRepository {
+nonisolated struct RemoteDeviceRepository: DeviceRepository {
     private let dataSource: BinblogDeviceDataSource
 
     init(dataSource: BinblogDeviceDataSource = BinblogDeviceDataSource()) {

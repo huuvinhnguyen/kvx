@@ -62,7 +62,7 @@ App đọc lại GET sau thành công. Lần đọc đó có thể vẫn là sna
 
 ## Lỗi
 
-- 401: chưa đăng nhập/token không hợp lệ. Swift yêu cầu đăng nhập bằng màn hiện có; Flutter xóa token trong datasource và đăng nhập lại khi người dùng bấm retry.
+- 401: chưa đăng nhập/token không hợp lệ. Cả Swift và Flutter kết thúc phiên tập trung nếu response thuộc generation hiện tại; yêu cầu đăng nhập rõ ràng qua UI. Retry chỉ tải dữ liệu, không tự đăng nhập. Response của phiên cũ không được xóa phiên mới.
 - 404: không tìm thấy, không có quyền hoặc sai device type. Backend không tiết lộ sự tồn tại thiết bị khác. Nếu server chưa deploy API mới thì cũng có thể trả 404.
 - 422, `error: invalid_configuration`: cấu hình test không hợp lệ, không publish.
 - 429, `error: cooldown`, `retry_after_seconds: 3`, header `Retry-After: 3`: chưa hết cooldown.

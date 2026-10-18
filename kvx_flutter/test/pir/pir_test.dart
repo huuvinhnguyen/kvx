@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kvx_flutter/data/datasources/binblog_device_datasource.dart';
+import '../support/auth_fixture.dart';
 import 'package:kvx_flutter/data/models/binblog_device_dto.dart';
 import 'package:kvx_flutter/data/repositories/pir_repository.dart';
 import 'package:kvx_flutter/domain/entities/device.dart';
@@ -88,13 +88,9 @@ void main() {
     );
   });
   test('authenticated API uses chip_id and server values contract', () async {
-    final source = BinblogDeviceDataSource(
-      username: 'test',
-      password: 'test',
+    final source = authenticatedFixture(
+      token: 'test-token',
       client: MockClient((request) async {
-        if (request.url.path == '/api/login') {
-          return http.Response('{"token":"test-token"}', 200);
-        }
         expect(request.headers['Authorization'], 'Bearer test-token');
         expect(request.url.queryParameters['chip_id'], 'esp32_testpir');
         expect(request.url.queryParameters['date'], '2026-09-15');

@@ -9,11 +9,6 @@ SIMULATOR_ID="65A80E5B-E316-471D-9BD7-E1B9D8FF2D01"
 APP_PATH="$PROJECT_DIR/build/ios/iphonesimulator/Runner.app"
 BUNDLE_ID="com.kvx.kvxFlutter"
 
-if [[ -z "${BINBLOG_USERNAME:-}" || -z "${BINBLOG_PASSWORD:-}" ]]; then
-    echo "Set BINBLOG_USERNAME and BINBLOG_PASSWORD before running."
-    exit 1
-fi
-
 if ! xcrun simctl list devices | grep -q "$SIMULATOR_ID"; then
     echo "Simulator not found: $SIMULATOR_NAME ($SIMULATOR_ID)"
     exit 1
@@ -35,9 +30,7 @@ echo "Installing Flutter dependencies..."
 flutter pub get
 
 echo "Building simulator app..."
-flutter build ios --simulator \
-    --dart-define="BINBLOG_USERNAME=$BINBLOG_USERNAME" \
-    --dart-define="BINBLOG_PASSWORD=$BINBLOG_PASSWORD"
+flutter build ios --simulator
 
 if [[ ! -d "$APP_PATH" ]]; then
     echo "Build succeeded but app was not found: $APP_PATH"

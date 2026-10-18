@@ -331,8 +331,6 @@ struct BuzzerTests {
     }
 }
 
-private struct BuzzerTestToken: AccessTokenProvider { let accessToken: String? = "fixture-token" }
-
 private final class BuzzerHTTPStub: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -397,7 +395,7 @@ struct BuzzerHTTPTests {
     @Test func uncertainManagementTransportIsNotADefiniteRejection() async {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BuzzerHTTPStub.self]
-        let client = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: URLSession(configuration: configuration))
+        let client = BuzzerAPIClient(transport: AuthenticatedTransport(authority: FixedTestSession(token: "fixture-token"), session: URLSession(configuration: configuration)))
         do { try await client.link(deviceID: "88", configuration: BuzzerLinkConfiguration(pirID: "7", relayIndex: 0, longlast: 100)); Issue.record("Expected uncertain POST") }
         catch BuzzerError.uncertainMutation {} catch { Issue.record("Wrong POST error: \(error)") }
         do { try await client.unlink(deviceID: "88", pirID: "7"); Issue.record("Expected uncertain DELETE") }
@@ -407,7 +405,7 @@ struct BuzzerHTTPTests {
     @Test func managementUsesDocumentedPathsAndNumericBody() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BuzzerHTTPStub.self]
-        let client = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: URLSession(configuration: configuration))
+        let client = BuzzerAPIClient(transport: AuthenticatedTransport(authority: FixedTestSession(token: "fixture-token"), session: URLSession(configuration: configuration)))
         #expect(try await client.availablePIRs(deviceID: "42").count == 1)
         try await client.link(deviceID: "42", configuration: BuzzerLinkConfiguration(pirID: "7", relayIndex: 0, longlast: 100))
         try await client.unlink(deviceID: "42", pirID: "7")
@@ -417,7 +415,7 @@ struct BuzzerHTTPTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BuzzerHTTPStub.self]
         let session = URLSession(configuration: configuration)
-        let client = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: session)
+        let client = BuzzerAPIClient(transport: AuthenticatedTransport(authority: FixedTestSession(token: "fixture-token"), session: session))
         let detail = try await client.detail(deviceID: "42")
         let pirs = try await client.linkedPIRs(deviceID: "42")
         let events = try await client.history(deviceID: "42")
@@ -431,7 +429,7 @@ struct BuzzerHTTPTests {
     @Test func httpErrorsAndRetryAfterAreMapped() async {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BuzzerHTTPStub.self]
-        let client = BuzzerAPIClient(tokenProvider: BuzzerTestToken(), session: URLSession(configuration: configuration))
+        let client = BuzzerAPIClient(transport: AuthenticatedTransport(authority: FixedTestSession(token: "fixture-token"), session: URLSession(configuration: configuration)))
         do { _ = try await client.detail(deviceID: "401"); Issue.record("Expected 401") }
         catch DeviceAPIError.httpStatus(401) {} catch { Issue.record("Wrong 401 error: \(error)") }
         do { _ = try await client.test(deviceID: "422"); Issue.record("Expected 422") }

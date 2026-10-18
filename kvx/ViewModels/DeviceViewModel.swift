@@ -70,6 +70,13 @@ final class DeviceViewModel {
         do {
             devices = try await fetchDevicesUseCase.execute()
         } catch {
+            if let failure = error as? SessionFailure {
+                switch failure {
+                case .signedOut: needsLogin = true; devices = []
+                case .stale: devices = []; isLoading = false; return
+                default: break
+                }
+            }
             if let apiError = error as? DeviceAPIError {
                 switch apiError {
                 case .missingAccessToken, .httpStatus(401):

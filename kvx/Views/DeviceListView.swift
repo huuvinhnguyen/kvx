@@ -8,11 +8,20 @@
 import SwiftUI
 
 struct DeviceListView: View {
+    @Environment(SessionViewModel.self) private var session
+    private let buzzerUseCases: BuzzerUseCases
+    private let pirTriggerActionUseCases: PIRTriggerActionUseCases
+    private let pirRepository: any PIRRepository
+    private let accountMethodsView: AnyView?
     @State private var viewModel: DeviceViewModel
     @State private var showingAddSheet = false
     @State private var showingLogin = false
 
-    init(viewModel: DeviceViewModel) {
+    init(viewModel: DeviceViewModel, buzzerUseCases: BuzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient()), pirRepository: any PIRRepository = PIRAPIClient(), pirTriggerActionUseCases: PIRTriggerActionUseCases = PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient()), accountMethodsView: AnyView? = nil) {
+        self.buzzerUseCases = buzzerUseCases
+        self.pirTriggerActionUseCases = pirTriggerActionUseCases
+        self.pirRepository = pirRepository
+        self.accountMethodsView = accountMethodsView
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -41,11 +50,7 @@ struct DeviceListView: View {
                 List {
                     ForEach(viewModel.filteredDevices) { device in
                         NavigationLink {
-                            DeviceDetailView(
-                                device: device,
-                                buzzerUseCases: BuzzerUseCases(repository: BuzzerAPIClient()),
-                                pirTriggerActionUseCases: PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient())
-                            )
+                            DeviceDetailView(device: device, buzzerUseCases: buzzerUseCases, pirTriggerActionUseCases: pirTriggerActionUseCases, pirRepository: pirRepository)
                         } label: {
                             DeviceRow(device: device)
                         }
@@ -77,6 +82,20 @@ struct DeviceListView: View {
             .navigationTitle("Devices")
             .searchable(text: $viewModel.searchText, prompt: "Search devices")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu("Tài khoản") {
+                        Button("Đổi tài khoản") { Task { await session.logout(reason: .switching) } }
+                        Button("Đăng xuất") { Task { await session.logout() } }
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if let accountMethodsView {
+                        NavigationLink(destination: accountMethodsView) {
+                            Image(systemName: "person.crop.circle")
+                        }
+                        .accessibilityLabel("Phương thức đăng nhập")
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingAddSheet = true }) {
                         Image(systemName: "plus")

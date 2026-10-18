@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../domain/entities/device_filter.dart';
-import '../extensions/device_presentation.dart';
 import '../providers/device_provider.dart';
+import '../providers/session_provider.dart';
+import '../../domain/auth/session.dart';
 import '../widgets/filter_bar.dart';
 import '../widgets/device_row.dart';
 import 'add_device_sheet.dart';
 import 'device_detail_screen.dart';
 
 class DeviceListScreen extends StatefulWidget {
-  const DeviceListScreen({super.key});
+  final WidgetBuilder? accountMethodsBuilder;
+  const DeviceListScreen({super.key, this.accountMethodsBuilder});
 
   @override
   State<DeviceListScreen> createState() => _DeviceListScreenState();
@@ -20,7 +22,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DeviceProvider>().loadDevices();
+      if (mounted) context.read<DeviceProvider>().loadDevices();
     });
   }
 
@@ -30,6 +32,30 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
       appBar: AppBar(
         title: const Text('Devices'),
         actions: [
+          if (widget.accountMethodsBuilder != null)
+            IconButton(
+              tooltip: 'Phương thức đăng nhập',
+              icon: const Icon(Icons.manage_accounts),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: widget.accountMethodsBuilder!),
+              ),
+            ),
+          PopupMenuButton<SignOutReason>(
+            tooltip: 'Tài khoản',
+            onSelected: (reason) =>
+                context.read<SessionProvider>().logout(reason: reason),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: SignOutReason.switching,
+                child: Text('Đổi tài khoản'),
+              ),
+              PopupMenuItem(
+                value: SignOutReason.logout,
+                child: Text('Đăng xuất'),
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => _showAddDeviceSheet(context),

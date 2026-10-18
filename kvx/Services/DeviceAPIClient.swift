@@ -1,13 +1,11 @@
 import Foundation
 
-struct BinblogDeviceDataSource {
+nonisolated struct BinblogDeviceDataSource {
     private let baseURL = URL(string: "https://khuonvien.vn")!
-    private let session: URLSession
-    private let tokenProvider: AccessTokenProvider
+    private let transport: AuthenticatedTransport
 
-    init(tokenProvider: AccessTokenProvider = UserDefaultsAccessTokenProvider(), session: URLSession = .shared) {
-        self.session = session
-        self.tokenProvider = tokenProvider
+    init(transport: AuthenticatedTransport = AuthenticatedTransport()) {
+        self.transport = transport
     }
 
     func fetchDevices() async throws -> [Device] {
@@ -15,15 +13,7 @@ struct BinblogDeviceDataSource {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        guard let accessToken = tokenProvider.accessToken, !accessToken.isEmpty else {
-            throw DeviceAPIError.missingAccessToken
-        }
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DeviceAPIError.invalidResponse
-        }
+        let (data, httpResponse) = try await transport.data(for: request)
         guard httpResponse.statusCode == 200 else {
             throw DeviceAPIError.httpStatus(httpResponse.statusCode)
         }

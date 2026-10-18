@@ -11,6 +11,7 @@ struct DeviceDetailView: View {
     let device: Device
     let buzzerUseCases: BuzzerUseCases
     let pirTriggerActionUseCases: PIRTriggerActionUseCases
+    var pirRepository: any PIRRepository = PIRAPIClient()
     @State private var isOn = false
     @State private var schedules: [Schedule] = []
     @State private var showingAddSchedule = false
@@ -21,7 +22,7 @@ struct DeviceDetailView: View {
             BuzzerDetailView(device: device, useCases: buzzerUseCases)
                 .id(device.id)
         } else if device.type == .pir {
-            PIRDetailView(device: device, triggerActionUseCases: pirTriggerActionUseCases)
+            PIRDetailView(device: device, repository: pirRepository, triggerActionUseCases: pirTriggerActionUseCases)
         } else {
             legacyDetail
         }

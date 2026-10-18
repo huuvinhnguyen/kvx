@@ -1,3 +1,5 @@
+import 'dart:math';
+
 enum SessionPhase {
   unknown,
   restoring,
@@ -8,25 +10,112 @@ enum SessionPhase {
 
 enum SignOutReason { none, logout, expired, switching }
 
+enum ReconciliationOperation { unlinkGoogle, rotateRecoveryCodes }
+
+enum ReconciliationGate {
+  unavailable,
+  clean,
+  legacy,
+  corrupt,
+  pendingUnlink,
+  pendingRotation,
+  storageBlocked,
+}
+
+String newLocalId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes
+      .map((value) => value.toRadixString(16).padLeft(2, '0'))
+      .join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
+class ReconciliationMarker {
+  final String operationId;
+  final ReconciliationOperation operation;
+  ReconciliationMarker(this.operation, {String? operationId})
+    : operationId = operationId ?? newLocalId();
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReconciliationMarker &&
+      other.operationId == operationId &&
+      other.operation == operation;
+  @override
+  int get hashCode => Object.hash(operationId, operation);
+}
+
+class ActiveSessionRecord {
+  final String token;
+  final String sessionId;
+  final ReconciliationMarker? marker;
+  ActiveSessionRecord(this.token, {String? sessionId, this.marker})
+    : sessionId = sessionId ?? newLocalId();
+
+  ActiveSessionRecord replacing(ReconciliationMarker? next) =>
+      ActiveSessionRecord(token, sessionId: sessionId, marker: next);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ActiveSessionRecord &&
+      other.token == token &&
+      other.sessionId == sessionId &&
+      other.marker == marker;
+  @override
+  int get hashCode => Object.hash(token, sessionId, marker);
+}
+
+class MutationLease {
+  final int generation;
+  final String sessionId;
+  final ReconciliationMarker marker;
+  const MutationLease(this.generation, this.sessionId, this.marker);
+}
+
+enum MarkerResolution {
+  provenNotDispatched,
+  providerAbsent,
+  lastMethodRejected,
+  codesAcknowledged,
+}
+
 class SessionState {
   final SessionPhase phase;
   final int generation;
   final SignOutReason reason;
   final String? message;
   final bool clearing;
+  final ReconciliationGate reconciliation;
   const SessionState({
     this.phase = SessionPhase.unknown,
     this.generation = 0,
     this.reason = SignOutReason.none,
     this.message,
     this.clearing = false,
+    this.reconciliation = ReconciliationGate.unavailable,
   });
 }
 
 class StoredSession {
   final String? token;
-  const StoredSession.active(String this.token);
-  const StoredSession.signedOut() : token = null;
+  final ActiveSessionRecord? record;
+  final bool quarantined;
+  const StoredSession.active(String this.token)
+    : record = null,
+      quarantined = false;
+  const StoredSession.signedOut()
+    : token = null,
+      record = null,
+      quarantined = false;
+  StoredSession.managed(this.record)
+    : token = record?.token,
+      quarantined = false;
+  const StoredSession.quarantined(String this.token)
+    : record = null,
+      quarantined = true;
 }
 
 class SessionSnapshot {
@@ -125,4 +214,19 @@ abstract interface class SessionAccess {
   bool isCurrent(int generation);
   Future<T> dispatch<T>(int generation, Future<T> Function() start);
   Future<bool> unauthorized(int generation);
+}
+
+abstract interface class ReconciliationAccess {
+  ReconciliationGate reconciliationGate(int generation);
+  MutationLease? pendingMutation(int generation);
+  Future<MutationLease> prepareMutation(
+    ReconciliationOperation operation,
+    int generation,
+  );
+  Future<void> clearMutation(MutationLease lease, MarkerResolution resolution);
+  Future<T> dispatchPrepared<T>(
+    MutationLease lease,
+    Future<T> Function() start,
+  );
+  Future<ReconciliationGate> refreshReconciliation(int generation);
 }

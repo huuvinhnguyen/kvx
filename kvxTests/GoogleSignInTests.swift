@@ -126,7 +126,7 @@ struct GoogleSocialSessionTests {
         let recording = RequestRecordingProtocol.session { request in
             #expect(request.httpMethod == "POST")
             #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
-            let body = try #require(request.httpBody)
+            let body = try #require(try RequestRecordingProtocol.bodyData(request))
             let payload = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
             #expect(payload == ["provider": "google", "credential": "google-id-token"])
             return (200, #"{"status":"success","token":"binblog-session","user":{}}"#)
@@ -181,7 +181,10 @@ struct GoogleSocialSessionTests {
         try await coordinator.authenticate { try await useCase.execute() }
         #expect(await sessions.receivedProvider == "google")
         #expect(await sessions.receivedCredential == "google-id-token")
-        #expect(await store.writes == [.active("binblog-session")])
+        let firstWrites = await store.writes
+        guard case .managed(let googleRecord) = firstWrites.first else { Issue.record("Expected v2 Binblog record"); return }
+        #expect(firstWrites.count == 1)
+        #expect(googleRecord.token == "binblog-session" && googleRecord.marker == nil)
         #expect(try await coordinator.snapshot().token == "binblog-session")
 
         #expect(await coordinator.logout())
@@ -237,10 +240,20 @@ struct GoogleSocialSessionTests {
         let store = GoogleMemoryStore()
         let coordinator = SessionCoordinator(store: store, authentication: GooglePasswordFake())
         let credentials = GoogleCredentialFake()
+        await coordinator.restore()
         let pending = Task {
             try await coordinator.authenticate { try await credentials.pausedCredential() }
         }
-        while credentials.continuation == nil { await Task.yield() }
+        defer { credentials.finishCredential(); pending.cancel() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while credentials.continuation == nil && ContinuousClock.now < deadline { await Task.yield() }
+        guard credentials.continuation != nil else {
+            credentials.finishCredential()
+            pending.cancel()
+            _ = await pending.result
+            Issue.record("Google credential fake did not become ready before logout")
+            return
+        }
         #expect(await coordinator.logout())
         credentials.finishCredential()
         do {
@@ -254,10 +267,20 @@ struct GoogleSocialSessionTests {
         let store = GoogleMemoryStore()
         let coordinator = SessionCoordinator(store: store, authentication: GooglePasswordFake())
         let credentials = GoogleCredentialFake()
+        await coordinator.restore()
         let pending = Task {
             try await coordinator.authenticate { try await credentials.pausedCredential() }
         }
-        while credentials.continuation == nil { await Task.yield() }
+        defer { credentials.finishCredential(); pending.cancel() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while credentials.continuation == nil && ContinuousClock.now < deadline { await Task.yield() }
+        guard credentials.continuation != nil else {
+            credentials.finishCredential()
+            pending.cancel()
+            _ = await pending.result
+            Issue.record("Google credential fake did not become ready before account switch")
+            return
+        }
 
         try await coordinator.switchAccount(username: "fixture", password: "fixture")
         credentials.finishCredential()
@@ -267,7 +290,12 @@ struct GoogleSocialSessionTests {
             Issue.record("Expected stale provider completion")
         } catch SessionFailure.stale {} catch { Issue.record("Unexpected stale failure") }
         #expect(try await coordinator.snapshot().token == "password-session")
-        #expect(await store.writes == [.signedOut, .active("password-session")])
+        let replacementWrites = await store.writes
+        guard replacementWrites.count == 2, case .managed(let passwordRecord) = replacementWrites.last else {
+            Issue.record("Expected signed-out then v2 password record"); return
+        }
+        #expect(replacementWrites.first == .signedOut)
+        #expect(passwordRecord.token == "password-session" && passwordRecord.marker == nil)
     }
 
     @Test func delayedProviderCleanupKeepsBothLoginPathsGatedAfterDurableLogout() async {
@@ -332,6 +360,23 @@ struct GoogleSocialSessionTests {
 
 private final class RequestRecordingProtocol: URLProtocol {
     nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, String))?
+    static func bodyData(_ request: URLRequest) throws -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while true {
+            let count = buffer.withUnsafeMutableBufferPointer {
+                stream.read($0.baseAddress!, maxLength: $0.count)
+            }
+            if count < 0 { throw stream.streamError ?? URLError(.cannotParseResponse) }
+            if count == 0 { return body }
+            guard body.count + count <= 16 * 1024 else { throw URLError(.dataLengthExceedsMaximum) }
+            body.append(contentsOf: buffer.prefix(count))
+        }
+    }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {

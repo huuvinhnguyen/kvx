@@ -10,7 +10,8 @@ import 'add_device_sheet.dart';
 import 'device_detail_screen.dart';
 
 class DeviceListScreen extends StatefulWidget {
-  const DeviceListScreen({super.key});
+  final WidgetBuilder? accountMethodsBuilder;
+  const DeviceListScreen({super.key, this.accountMethodsBuilder});
 
   @override
   State<DeviceListScreen> createState() => _DeviceListScreenState();
@@ -31,6 +32,15 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
       appBar: AppBar(
         title: const Text('Devices'),
         actions: [
+          if (widget.accountMethodsBuilder != null)
+            IconButton(
+              tooltip: 'Phương thức đăng nhập',
+              icon: const Icon(Icons.manage_accounts),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: widget.accountMethodsBuilder!),
+              ),
+            ),
           PopupMenuButton<SignOutReason>(
             tooltip: 'Tài khoản',
             onSelected: (reason) =>

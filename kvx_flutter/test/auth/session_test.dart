@@ -15,6 +15,7 @@ class MemoryStore implements SessionStore {
   int reads = 0, deletes = 0;
   final writes = <StoredSession>[];
   bool failRead = false, failWrite = false, failDelete = false;
+  bool failAfterWrite = false, failReadBack = false, readBackArmed = false;
   Completer<void>? readGate, writeGate;
   final readStarted = Completer<void>();
   final writeStarted = Completer<void>();
@@ -26,6 +27,10 @@ class MemoryStore implements SessionStore {
     if (!readStarted.isCompleted) readStarted.complete();
     await readGate?.future;
     if (failRead) throw StateError('read failed');
+    if (readBackArmed) {
+      readBackArmed = false;
+      throw StateError('readback failed');
+    }
     return captured;
   }
 
@@ -36,6 +41,10 @@ class MemoryStore implements SessionStore {
     await writeGate?.future;
     if (failWrite) throw StateError('write failed');
     this.value = value;
+    if (failReadBack) readBackArmed = true;
+    if (failAfterWrite) {
+      throw StateError('write landed without acknowledgement');
+    }
   }
 
   @override
@@ -304,6 +313,207 @@ void main() {
       expect(session.state.phase, SessionPhase.signedOut);
       session.dispose();
     });
+    test(
+      'legacy and invalid marker sessions retain reads but quarantine writes',
+      () async {
+        for (final stored in [
+          const StoredSession.active('dummy-jwt'),
+          const StoredSession.quarantined('dummy-jwt'),
+        ]) {
+          final session = coordinator(MemoryStore(stored));
+          await session.restore();
+          final generation = session.snapshot().generation;
+          expect(session.snapshot().token, 'dummy-jwt');
+          expect(
+            session.state.reconciliation,
+            stored.quarantined
+                ? ReconciliationGate.corrupt
+                : ReconciliationGate.legacy,
+          );
+          await expectLater(
+            session.prepareMutation(
+              ReconciliationOperation.unlinkGoogle,
+              generation,
+            ),
+            throwsA(failure(SessionFailureKind.storage)),
+          );
+          session.dispose();
+        }
+      },
+    );
+    test(
+      'durable prepare fences dispatch and pending Unlink survives restart',
+      () async {
+        final store = MemoryStore(
+          StoredSession.managed(ActiveSessionRecord('dummy-jwt')),
+        );
+        final session = coordinator(store);
+        await session.restore();
+        final generation = session.snapshot().generation;
+        final lease = await session.prepareMutation(
+          ReconciliationOperation.unlinkGoogle,
+          generation,
+        );
+        expect(store.value!.record!.marker, lease.marker);
+        var sends = 0;
+        await session.dispatchPrepared(lease, () async {
+          sends++;
+        });
+        expect(sends, 1);
+        final restarted = coordinator(store);
+        await restarted.restore();
+        expect(
+          restarted.state.reconciliation,
+          ReconciliationGate.pendingUnlink,
+        );
+        final restartedGeneration = restarted.snapshot().generation;
+        await expectLater(
+          restarted.prepareMutation(
+            ReconciliationOperation.rotateRecoveryCodes,
+            restartedGeneration,
+          ),
+          throwsA(failure(SessionFailureKind.storage)),
+        );
+        final current = restarted.pendingMutation(restartedGeneration)!;
+        expect(current.sessionId, lease.sessionId);
+        expect(current.marker, lease.marker);
+        await restarted.clearMutation(current, MarkerResolution.providerAbsent);
+        expect(restarted.state.reconciliation, ReconciliationGate.clean);
+        expect(store.value!.record!.marker, isNull);
+        session.dispose();
+        restarted.dispose();
+      },
+    );
+    test('prepared marker without dispatch locks restored graph', () async {
+      final store = MemoryStore(
+        StoredSession.managed(ActiveSessionRecord('dummy-jwt')),
+      );
+      final first = coordinator(store);
+      await first.restore();
+      final generation = first.snapshot().generation;
+      final lease = await first.prepareMutation(
+        ReconciliationOperation.unlinkGoogle,
+        generation,
+      );
+      expect(store.value!.record!.marker, lease.marker);
+      var mutationRequests = 0;
+      final restarted = coordinator(store);
+      await restarted.restore();
+      expect(restarted.state.reconciliation, ReconciliationGate.pendingUnlink);
+      await expectLater(
+        restarted.prepareMutation(
+          ReconciliationOperation.rotateRecoveryCodes,
+          restarted.snapshot().generation,
+        ),
+        throwsA(failure(SessionFailureKind.storage)),
+      );
+      expect(store.value!.record!.marker, lease.marker);
+      expect(mutationRequests, 0);
+      first.dispose();
+      restarted.dispose();
+    });
+    test(
+      'stale last-method clear cannot replace a new session marker',
+      () async {
+        final store = MemoryStore(
+          StoredSession.managed(ActiveSessionRecord('same-dummy-jwt')),
+        );
+        final session = coordinator(store);
+        await session.restore();
+        final old = await session.prepareMutation(
+          ReconciliationOperation.unlinkGoogle,
+          session.snapshot().generation,
+        );
+        expect(await session.logout(), isTrue);
+        await session.authenticate(() async => 'same-dummy-jwt');
+        final replacement = await session.prepareMutation(
+          ReconciliationOperation.unlinkGoogle,
+          session.snapshot().generation,
+        );
+        await expectLater(
+          session.clearMutation(old, MarkerResolution.lastMethodRejected),
+          throwsA(failure(SessionFailureKind.stale)),
+        );
+        expect(store.value!.record!.sessionId, replacement.sessionId);
+        expect(store.value!.record!.marker, replacement.marker);
+        expect(session.state.reconciliation, ReconciliationGate.pendingUnlink);
+        session.dispose();
+      },
+    );
+    test('write and readback faults prevent mutation dispatch', () async {
+      for (final fault in ['write', 'after-write', 'readback']) {
+        final store = MemoryStore(
+          StoredSession.managed(ActiveSessionRecord('dummy-jwt')),
+        );
+        final session = coordinator(store);
+        await session.restore();
+        final generation = session.snapshot().generation;
+        store.failWrite = fault == 'write';
+        store.failAfterWrite = fault == 'after-write';
+        store.failReadBack = fault == 'readback';
+        var sends = 0;
+        await expectLater(
+          session
+              .prepareMutation(ReconciliationOperation.unlinkGoogle, generation)
+              .then(
+                (lease) => session.dispatchPrepared(lease, () async {
+                  sends++;
+                }),
+              ),
+          throwsA(anything),
+        );
+        expect(sends, 0);
+        expect(session.state.reconciliation, ReconciliationGate.storageBlocked);
+        final restarted = coordinator(store);
+        await restarted.restore();
+        expect(
+          restarted.state.reconciliation,
+          fault == 'write'
+              ? ReconciliationGate.clean
+              : ReconciliationGate.pendingUnlink,
+        );
+        session.dispose();
+        restarted.dispose();
+      }
+    });
+    test(
+      'clear failure retains rotation warning and old lease cannot clear new login',
+      () async {
+        final store = MemoryStore(
+          StoredSession.managed(ActiveSessionRecord('same-dummy-jwt')),
+        );
+        final session = coordinator(store);
+        await session.restore();
+        final lease = await session.prepareMutation(
+          ReconciliationOperation.rotateRecoveryCodes,
+          session.snapshot().generation,
+        );
+        store.failWrite = true;
+        await expectLater(
+          session.clearMutation(lease, MarkerResolution.codesAcknowledged),
+          throwsA(anything),
+        );
+        expect(session.state.reconciliation, ReconciliationGate.storageBlocked);
+        final restarted = coordinator(store);
+        await restarted.restore();
+        expect(
+          restarted.state.reconciliation,
+          ReconciliationGate.pendingRotation,
+        );
+        store.failWrite = false;
+        expect(await session.logout(), isTrue);
+        await session.authenticate(() async => 'same-dummy-jwt');
+        expect(session.state.reconciliation, ReconciliationGate.clean);
+        await expectLater(
+          session.clearMutation(lease, MarkerResolution.codesAcknowledged),
+          throwsA(failure(SessionFailureKind.stale)),
+        );
+        expect(store.value!.record!.sessionId, isNot(lease.sessionId));
+        expect(store.value!.record!.marker, isNull);
+        session.dispose();
+        restarted.dispose();
+      },
+    );
   });
   group('authenticated transport', () {
     test(
@@ -477,7 +687,7 @@ void main() {
       () async {
         for (final raw in [
           'bad-json',
-          '{"version":2,"state":"active","token":"A"}',
+          '{"version":9,"state":"active","token":"A"}',
           '{"version":1,"state":"active","token":" "}',
           '{"version":1,"state":"signedOut","token":"A"}',
         ]) {
@@ -486,6 +696,66 @@ void main() {
             const SecureSessionStore().read(),
             throwsA(anything),
           );
+        }
+        FlutterSecureStorage.setMockInitialValues({
+          key: '{"version":2,"state":"active","token":"A"}',
+        });
+        expect((await const SecureSessionStore().read())!.quarantined, isTrue);
+      },
+    );
+    test(
+      'v2 uses one strict nonsecret marker in the existing secure key',
+      () async {
+        const store = SecureSessionStore();
+        final marker = ReconciliationMarker(
+          ReconciliationOperation.unlinkGoogle,
+        );
+        final record = ActiveSessionRecord('dummy-jwt', marker: marker);
+        await store.write(StoredSession.managed(record));
+        final raw = await const FlutterSecureStorage().read(key: key);
+        final decoded = jsonDecode(raw!) as Map<String, dynamic>;
+        expect(decoded.keys.toSet(), {
+          'version',
+          'state',
+          'token',
+          'session_id',
+          'marker',
+        });
+        expect(decoded['version'], 2);
+        final journal = decoded['marker'] as Map<String, dynamic>;
+        expect(journal.keys.toSet(), {
+          'version',
+          'operation_id',
+          'operation',
+          'provider',
+          'reason',
+        });
+        expect(journal['provider'], 'google');
+        expect(journal['reason'], 'await_provider_absence');
+        expect(raw, isNot(contains('dummy-password')));
+        expect(raw, isNot(contains('dummy-grant')));
+        expect((await store.read())!.record, record);
+
+        for (final invalid in [
+          {...decoded, 'unexpected': true},
+          {
+            ...decoded,
+            'marker': {...journal, 'reason': 'other'},
+          },
+          {
+            ...decoded,
+            'marker': {...journal, 'secret': 'dummy-grant'},
+          },
+          {
+            ...decoded,
+            'marker': {...journal, 'version': 9},
+          },
+          {...decoded, 'session_id': 'not-a-uuid'},
+        ]) {
+          FlutterSecureStorage.setMockInitialValues({key: jsonEncode(invalid)});
+          final quarantined = await store.read();
+          expect(quarantined!.token, 'dummy-jwt');
+          expect(quarantined.quarantined, isTrue);
         }
       },
     );

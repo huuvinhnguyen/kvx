@@ -12,6 +12,7 @@ struct FixedTestSession: SessionAuthorizing {
     func isCurrent(_ generation: UInt64) async -> Bool { generation == 1 }
     func dispatch(_ generation: UInt64, start: @Sendable () -> Void) async throws { start() }
     func unauthorized(_ generation: UInt64) async -> Bool { true }
+    func dispatchPrepared(_ lease: MutationLease, start: @Sendable () -> Void) async throws { throw SessionFailure.storage }
 }
 
 private actor MemorySessionStore: SessionStore {
@@ -21,6 +22,9 @@ private actor MemorySessionStore: SessionStore {
     var deletes = 0
     var failRead = false
     var failWrite = false
+    var failAfterWrite = false
+    var failReadBack = false
+    var readBackArmed = false
     var failDelete = false
     var pauseWrite = false
     var pauseRead = false
@@ -30,6 +34,9 @@ private actor MemorySessionStore: SessionStore {
     func configure(read: Bool = false, write: Bool = false, delete: Bool = false, pause: Bool = false) {
         failRead = read; failWrite = write; failDelete = delete; pauseWrite = pause
     }
+    func configureMarkerFault(afterWrite: Bool = false, readBack: Bool = false) {
+        failAfterWrite = afterWrite; failReadBack = readBack
+    }
     func pauseRestoration() { pauseRead = true }
     func resumeRead() { pendingRead?.resume(); pendingRead = nil }
     func read() async throws -> StoredSession? {
@@ -37,6 +44,7 @@ private actor MemorySessionStore: SessionStore {
         let captured = value
         if pauseRead { await withCheckedContinuation { pendingRead = $0 }; pauseRead = false }
         if failRead { throw SessionFailure.storage }
+        if readBackArmed { readBackArmed = false; throw SessionFailure.storage }
         return captured
     }
     func write(_ value: StoredSession) async throws {
@@ -44,6 +52,8 @@ private actor MemorySessionStore: SessionStore {
         if pauseWrite { await withCheckedContinuation { pendingWrite = $0 }; pauseWrite = false }
         if failWrite { throw SessionFailure.storage }
         self.value = value
+        if failReadBack { readBackArmed = true }
+        if failAfterWrite { throw SessionFailure.storage }
     }
     func resumeWrite() { pendingWrite?.resume(); pendingWrite = nil }
     func delete() throws {
@@ -69,6 +79,13 @@ private actor SessionLoginFake: PasswordAuthenticating {
         return result
     }
     func finish() { pending?.resume(returning: result); pending = nil }
+}
+
+private final class MarkerDispatchProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func start() { lock.lock(); count += 1; lock.unlock() }
+    var starts: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
 
 @MainActor
@@ -120,7 +137,9 @@ struct SessionCoordinatorTests {
         await store.resumeWrite()
         try await request.value
         #expect(await coordinator.state.phase == .authenticated)
-        #expect(await store.value == .active("session-B"))
+        guard case .managed(let installed) = await store.value else { Issue.record("Expected v2 session record"); return }
+        #expect(installed.token == "session-B")
+        #expect(installed.marker == nil)
     }
 
     @Test func rejectedLoginAndInvalidTokenInstallNothing() async {
@@ -291,6 +310,150 @@ struct SessionCoordinatorTests {
         #expect(await coordinator.state.phase == .signedOut)
         #expect(await coordinator.state.message != nil)
     }
+
+    @Test func legacyAndCorruptSessionsRemainReadableButQuarantineWrites() async throws {
+        for stored in [StoredSession.active("dummy-jwt"), .quarantined("dummy-jwt")] {
+            let session = SessionCoordinator(store: MemorySessionStore(stored), authentication: SessionLoginFake())
+            await session.restore()
+            let generation = try await session.snapshot().generation
+            #expect(try await session.snapshot().token == "dummy-jwt")
+            #expect(await session.state.reconciliation == (stored == .active("dummy-jwt") ? .legacy : .corrupt))
+            do {
+                _ = try await session.prepareMutation(.unlinkGoogle, generation: generation)
+                Issue.record("Quarantined session prepared a mutation")
+            } catch SessionFailure.storage {} catch { Issue.record("Wrong quarantine failure") }
+        }
+    }
+
+    @Test func malformedManagedTokenNeverInstallsAuthentication() async {
+        let session = SessionCoordinator(store: MemorySessionStore(.managed(ActiveSessionRecord(token: " \n"))),
+                                         authentication: SessionLoginFake())
+        await session.restore()
+        #expect(await session.state.phase == .restoring)
+        #expect(await session.state.message != nil)
+    }
+
+    @Test func prepareReadbackPrecedesDispatchAndRestoresUnlinkLock() async throws {
+        let store = MemorySessionStore(.managed(ActiveSessionRecord(token: "dummy-jwt")))
+        let session = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await session.restore()
+        let generation = try await session.snapshot().generation
+        let lease: MutationLease
+        do { lease = try await session.prepareMutation(.unlinkGoogle, generation: generation) }
+        catch { Issue.record("Coordinator marker preparation failed: \(type(of: error))"); return }
+        guard case .managed(let persisted) = await store.value else { Issue.record("Missing v2 record"); return }
+        #expect(persisted.marker == lease.marker)
+        let probe = MarkerDispatchProbe()
+        do { try await session.dispatchPrepared(lease) { probe.start() } }
+        catch { Issue.record("Coordinator dispatch fence failed: \(type(of: error))"); return }
+        #expect(probe.starts == 1)
+
+        let restarted = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await restarted.restore()
+        #expect(await restarted.state.reconciliation == .pendingUnlink)
+        let restartedGeneration = try await restarted.snapshot().generation
+        do {
+            _ = try await restarted.prepareMutation(.rotateRecoveryCodes, generation: restartedGeneration)
+            Issue.record("Pending Unlink permitted another write")
+        } catch SessionFailure.storage {} catch { Issue.record("Wrong pending-marker failure") }
+        let currentLease = try #require(await restarted.pendingMutation(restartedGeneration))
+        #expect(currentLease.sessionID == lease.sessionID && currentLease.marker == lease.marker)
+        do { try await restarted.clearMutation(currentLease, resolution: .providerAbsent) }
+        catch { Issue.record("Coordinator conditional clear failed: \(type(of: error))"); return }
+        #expect(await restarted.state.reconciliation == .clean)
+        #expect(await store.value == .managed(persisted.replacing(marker: nil)))
+    }
+
+    @Test func preparedMarkerWithoutDispatchLocksRestoredGraph() async throws {
+        let store = MemorySessionStore(.managed(ActiveSessionRecord(token: "dummy-jwt")))
+        let first = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await first.restore()
+        let generation = try await first.snapshot().generation
+        let lease = try await first.prepareMutation(.unlinkGoogle, generation: generation)
+        guard case .managed(let persisted) = await store.value else { Issue.record("Missing prepared record"); return }
+        #expect(persisted.marker == lease.marker)
+        let dispatch = MarkerDispatchProbe()
+        #expect(dispatch.starts == 0)
+
+        let restarted = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await restarted.restore()
+        #expect(await restarted.state.reconciliation == .pendingUnlink)
+        let nextGeneration = try await restarted.snapshot().generation
+        do {
+            _ = try await restarted.prepareMutation(.rotateRecoveryCodes, generation: nextGeneration)
+            Issue.record("Prepared marker did not lock writes")
+        } catch SessionFailure.storage {} catch { Issue.record("Wrong lock failure") }
+        #expect(await store.value == .managed(persisted))
+        #expect(dispatch.starts == 0)
+    }
+
+    @Test func failedAndAmbiguousPrepareNeverDispatch() async throws {
+        for fault in ["write", "after-write", "readback"] {
+            let store = MemorySessionStore(.managed(ActiveSessionRecord(token: "dummy-jwt")))
+            let session = SessionCoordinator(store: store, authentication: SessionLoginFake())
+            await session.restore()
+            let generation = try await session.snapshot().generation
+            if fault == "write" { await store.configure(write: true) }
+            if fault == "after-write" { await store.configureMarkerFault(afterWrite: true) }
+            if fault == "readback" { await store.configureMarkerFault(readBack: true) }
+            let probe = MarkerDispatchProbe()
+            do {
+                let lease = try await session.prepareMutation(.unlinkGoogle, generation: generation)
+                try await session.dispatchPrepared(lease) { probe.start() }
+                Issue.record("Fault must prevent mutation dispatch")
+            } catch SessionFailure.storage {} catch { Issue.record("Wrong storage failure") }
+            #expect(probe.starts == 0)
+            #expect(await session.state.reconciliation == .storageBlocked)
+            let restarted = SessionCoordinator(store: store, authentication: SessionLoginFake())
+            await restarted.restore()
+            #expect(await restarted.state.reconciliation == (fault == "write" ? .clean : .pendingUnlink))
+        }
+    }
+
+    @Test func clearFailureAndOldLeaseCannotUnlockNewSession() async throws {
+        let store = MemorySessionStore(.managed(ActiveSessionRecord(token: "same-dummy-jwt")))
+        let session = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await session.restore()
+        let generation = try await session.snapshot().generation
+        let lease = try await session.prepareMutation(.rotateRecoveryCodes, generation: generation)
+        await store.configure(write: true)
+        do {
+            try await session.clearMutation(lease, resolution: .codesAcknowledged)
+            Issue.record("Clear failure unlocked mutation")
+        } catch SessionFailure.storage {} catch { Issue.record("Wrong clear failure") }
+        #expect(await session.state.reconciliation == .storageBlocked)
+        let restarted = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await restarted.restore()
+        #expect(await restarted.state.reconciliation == .pendingRotation)
+
+        await store.configure()
+        #expect(await session.logout())
+        try await session.authenticate { "same-dummy-jwt" }
+        #expect(await session.state.reconciliation == .clean)
+        do {
+            try await session.clearMutation(lease, resolution: .codesAcknowledged)
+            Issue.record("Old marker cleared a replacement session")
+        } catch SessionFailure.stale {} catch { Issue.record("Wrong stale marker failure") }
+        guard case .managed(let fresh) = await store.value else { Issue.record("Missing replacement record"); return }
+        #expect(fresh.sessionID != lease.sessionID && fresh.marker == nil)
+    }
+
+    @Test func staleLastMethodClearCannotReplaceNewSessionMarker() async throws {
+        let store = MemorySessionStore(.managed(ActiveSessionRecord(token: "same-dummy-jwt")))
+        let session = SessionCoordinator(store: store, authentication: SessionLoginFake())
+        await session.restore()
+        let old = try await session.prepareMutation(.unlinkGoogle, generation: session.snapshot().generation)
+        #expect(await session.logout())
+        try await session.authenticate { "same-dummy-jwt" }
+        let new = try await session.prepareMutation(.unlinkGoogle, generation: session.snapshot().generation)
+        do {
+            try await session.clearMutation(old, resolution: .lastMethodRejected)
+            Issue.record("Stale 409 cleared replacement marker")
+        } catch SessionFailure.stale {} catch { Issue.record("Wrong stale clear failure") }
+        guard case .managed(let persisted) = await store.value else { Issue.record("Missing replacement record"); return }
+        #expect(persisted.sessionID == new.sessionID && persisted.marker == new.marker)
+        #expect(await session.state.reconciliation == .pendingUnlink)
+    }
 }
 
 private actor ResponseGate {
@@ -337,6 +500,7 @@ private actor ConstructionRaceAuthority: SessionAuthorizing {
         start()
     }
     func unauthorized(_ generation: UInt64) -> Bool { false }
+    func dispatchPrepared(_ lease: MutationLease, start: @Sendable () -> Void) async throws { throw SessionFailure.storage }
 }
 
 @MainActor
@@ -482,6 +646,54 @@ struct KeychainMigrationTests {
         await signedOutRestart.restore()
         #expect(await signedOutRestart.state.phase == .signedOut)
         #expect(await signedOutRestart.state.message == nil)
+    }
+
+    @Test func v2KeychainRecordHasStrictAllowlistAndInvalidMarkerIsQuarantined() async throws {
+        let namespace = "kvx.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: namespace))
+        defer { cleanup(service: namespace, defaults: defaults) }
+        let store = KeychainSessionStore(defaults: defaults, service: namespace)
+        let record = ActiveSessionRecord(token: "dummy-jwt", marker: ReconciliationMarker(operation: .unlinkGoogle))
+        try await store.write(.managed(record))
+        #expect(try await store.read() == .managed(record))
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: namespace, kSecAttrAccount as String: "active-session",
+            kSecAttrSynchronizable as String: false]
+        var lookup = query
+        lookup[kSecReturnData as String] = true
+        lookup[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        #expect(SecItemCopyMatching(lookup as CFDictionary, &item) == errSecSuccess)
+        let data = try #require(item as? Data)
+        let map = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(map.keys) == Set(["version", "state", "token", "session_id", "marker"]))
+        let marker = try #require(map["marker"] as? [String: Any])
+        #expect(Set(marker.keys) == Set(["version", "operation_id", "operation", "provider", "reason"]))
+        #expect(marker["provider"] as? String == "google")
+        #expect(data.range(of: Data("dummy-password".utf8)) == nil)
+        #expect(data.range(of: Data("dummy-grant".utf8)) == nil)
+
+        var invalid = map
+        var invalidMarker = marker
+        invalidMarker["reason"] = "other"
+        invalid["marker"] = invalidMarker
+        let invalidData = try JSONSerialization.data(withJSONObject: invalid)
+        let update: [String: Any] = [kSecValueData as String: invalidData]
+        #expect(SecItemUpdate(query as CFDictionary, update as CFDictionary) == errSecSuccess)
+        #expect(try await store.read() == .quarantined("dummy-jwt"))
+        invalidMarker["reason"] = "await_provider_absence"
+        invalidMarker["provider"] = "other"
+        invalid["marker"] = invalidMarker
+        let wrongProviderData = try JSONSerialization.data(withJSONObject: invalid)
+        #expect(SecItemUpdate(query as CFDictionary,
+                              [kSecValueData as String: wrongProviderData] as CFDictionary) == errSecSuccess)
+        #expect(try await store.read() == .quarantined("dummy-jwt"))
+        let floatVersionData = Data("""
+        {"version":2,"state":"active","token":"dummy-jwt","session_id":"\(record.sessionID)","marker":{"version":1.0,"operation_id":"\(record.marker!.operationID)","operation":"unlink_google","provider":"google","reason":"await_provider_absence"}}
+        """.utf8)
+        #expect(SecItemUpdate(query as CFDictionary,
+                              [kSecValueData as String: floatVersionData] as CFDictionary) == errSecSuccess)
+        #expect(try await store.read() == .quarantined("dummy-jwt"))
     }
 }
 

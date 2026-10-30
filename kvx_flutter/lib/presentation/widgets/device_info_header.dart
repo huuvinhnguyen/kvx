@@ -53,14 +53,15 @@ class DeviceInfoHeader extends StatelessWidget {
                 children: [
                   const Icon(Icons.access_time, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(
-                    'Lần kết nối cuối: ${_formatDateTime(device.lastConnected!)}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
+                  Expanded(
+                    child: Text(
+                      'Lần kết nối cuối: ${_formatDateTime(device.lastConnected!)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   if (onRefresh != null)
                     IconButton(
                       icon: isLoading

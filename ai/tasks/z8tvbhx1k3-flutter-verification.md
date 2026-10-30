@@ -9,8 +9,8 @@ discarded or falsely committed. This task uses an independent clean worktree.
 ## Scope and approach
 
 Restore existing demo consumer imports and obsolete named parameters to current
-widget contracts; do not change shared widgets, live API behavior or reminder
-execution. The stale demo parameters become visible only after imports resolve.
+widget contracts; initially exclude shared widgets, live API behavior and reminder
+execution. The bounded shared-header scope adjustment below follows actual simulator evidence. The stale demo parameters become visible only after imports resolve.
 Demo actions remain local-only and never send device commands. Remove existing
 unused imports/variable warning and equivalent deprecated Flutter call sites so
 full analyze remains strict; do not silence diagnostics in CI.
@@ -158,3 +158,23 @@ always-uploaded artifact. Original app dependencies and product sources unchange
 Flutter3.41.9 IOSApp.fromPrebuiltApp explicitly supports an uncompressed.app folder.
 Local4Python tooling tests, bash syntax and diff checks PASS; revised remote
 execution and screenshot review are pending. PR stays Draft; manual gate open.
+
+
+## Phone-width layout repair following actual UI failure
+
+Sourcef4791ba CI41146461505 proves prepare/build/sign/boot/prebuilt drive work.
+Linux checks and normal iOS build PASS; actual simulator test FAILED at initial
+frame: RenderFlex overflow8.1pxright. No screenshot/result, so no visual acceptance.
+Artifact13020753294 (SHA256550080a400a892dd8ea10118c69e92691331d26b9d01843987d72cc1ba2fae11)
+contains logs and metadata, retained7days.
+
+Bounded scope adjustment: repair DeviceInfoHeader's last-connected row so its
+text occupies remaining space and wraps beside the refresh button. This shared
+widget is currently used only by the demo; the initial no-shared-widget boundary
+was our planning constraint, not an owner prohibition. The change is necessary
+for the owner-requested representative phone smoke, with no API/domain behavior
+or broader redesign. Keep full text, refresh action and strict overflow assertions.
+The unbounded row is the suspected source; a passing revised device run must
+validate the repair. Change the existing demo regression from1200px desktop width
+to390px phone width so this class of mobile overflow cannot be hidden by that test.
+Actual revised Flutter/widget/device checks pending CI; no pass inferred locally.

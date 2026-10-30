@@ -7,7 +7,7 @@ void main() {
   testWidgets(
     'demo renders current widget contracts and updates only local state',
     (tester) async {
-      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -15,6 +15,12 @@ void main() {
         const MaterialApp(home: RelayWidgetsDemoScreen()),
       );
       expect(find.text('Relay Widgets Demo'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      final refresh = find.byTooltip('Làm mới');
+      expect(refresh.hitTestable(), findsOneWidget);
+      await tester.tap(refresh);
+      await tester.pump();
+      expect(find.text('Refreshing device...'), findsOneWidget);
       expect(tester.takeException(), isNull);
       expect(
         tester.widget<RelayToggleSwitch>(find.byType(RelayToggleSwitch)).value,

@@ -68,9 +68,18 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Build iOS simulator
         run: flutter build ios --simulator --no-codesign
-      - name: Exercise relay demo on iPhone Simulator
-        timeout-minutes: 20
-        run: bash ../tool/run_relay_demo_smoke.sh
+      - name: Prepare isolated relay demo
+        timeout-minutes: 5
+        run: bash ../tool/run_relay_demo_smoke.sh prepare
+      - name: Build relay demo test app
+        timeout-minutes: 15
+        run: bash ../tool/run_relay_demo_smoke.sh build
+      - name: Boot selected iPhone Simulator
+        timeout-minutes: 12
+        run: bash ../tool/run_relay_demo_smoke.sh boot
+      - name: Exercise prebuilt relay demo
+        timeout-minutes: 8
+        run: bash ../tool/run_relay_demo_smoke.sh drive
       - name: Upload simulator evidence
         if: always()
         uses: actions/upload-artifact@v4

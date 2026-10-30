@@ -140,3 +140,21 @@ NON-BLOCKING NOTES. Confirmed P2 (overwriting native screenshot reportData) fixe
 by metadata merge preserving screenshots plus16-image assertion. Added explicit
 post-scroll frame settling per review recommendation; driver checks exact16names.
 Current Python4tests/bash/diff checks passed; actual CI remains pending.
+
+## Simulator launcher timeout follow-up
+
+Published extension8ab17f0 CI41143331896: Linux checks passed (4Python helper
+checks, analyze0issues,183Flutter tests, Web build), normal iOS simulator build
+passed. Demo smoke FAILED its20minute timeout: simulator boot consumed roughly
+8minutes, then the drive-triggered Xcode build did not complete before timeout.
+Artifact13021021112 contains metadata/logs only, NO screenshots/UI test result.
+Thus there is no simulator interaction or visual acceptance evidence from that run.
+
+Split prepare/build/boot/drive into separately timed CI steps. Build the integration
+test target for generic simulator before boot, ad-hoc sign its temporary app,
+boot the selected UDID, open Simulator from the active Xcode, then drive the
+prebuilt app bundle without another build. Verbose build/drive logs remain in the
+always-uploaded artifact. Original app dependencies and product sources unchanged.
+Flutter3.41.9 IOSApp.fromPrebuiltApp explicitly supports an uncompressed.app folder.
+Local4Python tooling tests, bash syntax and diff checks PASS; revised remote
+execution and screenshot review are pending. PR stays Draft; manual gate open.

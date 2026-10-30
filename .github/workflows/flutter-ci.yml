@@ -34,6 +34,8 @@ jobs:
           dart --version
       - name: Install locked dependencies
         run: flutter pub get --enforce-lockfile
+      - name: Check isolated smoke tooling
+        run: python3 ../tool/test_relay_smoke_support.py
       - name: Analyze
         run: flutter analyze
       - name: Run unit and widget tests
@@ -66,6 +68,17 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Build iOS simulator
         run: flutter build ios --simulator --no-codesign
+      - name: Exercise relay demo on iPhone Simulator
+        timeout-minutes: 20
+        run: bash ../tool/run_relay_demo_smoke.sh
+      - name: Upload simulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay-demo-simulator-evidence
+          path: ${{ runner.temp }}/relay-demo-artifacts
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify dependency files unchanged
         if: always()
         run: git -C .. diff --exit-code -- kvx_flutter/pubspec.yaml kvx_flutter/pubspec.lock

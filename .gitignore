@@ -1,2 +1,5 @@
 # Xcode build artifacts
 /build/
+
+# Simulator smoke tooling
+/tool/__pycache__/

@@ -1,0 +1,117 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:kvx_flutter/presentation/screens/relay_widgets_demo_screen.dart';
+import 'package:kvx_flutter/presentation/widgets/relay_reminder_form.dart';
+import 'package:kvx_flutter/presentation/widgets/relay_reminder_list.dart';
+import 'package:kvx_flutter/presentation/widgets/relay_toggle_switch.dart';
+
+void main() {
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final completed = <String>[];
+  testWidgets('relay demo on iPhone simulator, light and dark', (tester) async {
+    for (final mode in [Brightness.light, Brightness.dark]) {
+      final prefix = mode.name;
+      await tester.pumpWidget(
+        MaterialApp(
+          key: ValueKey(prefix),
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: mode,
+            ),
+            useMaterial3: true,
+          ),
+          home: const RelayWidgetsDemoScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Relay Widgets Demo'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await binding.takeScreenshot('${prefix}_01_initial');
+
+      final toggle = find.descendant(
+        of: find.byType(RelayToggleSwitch),
+        matching: find.byType(Switch),
+      );
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<RelayToggleSwitch>(find.byType(RelayToggleSwitch)).value,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+      await binding.takeScreenshot('${prefix}_02_on');
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<RelayToggleSwitch>(find.byType(RelayToggleSwitch)).value,
+        isFalse,
+      );
+      await binding.takeScreenshot('${prefix}_03_off');
+
+      final form = find.byType(RelayReminderForm);
+      final input = find.descendant(of: form, matching: find.byType(TextField));
+      await tester.ensureVisible(input);
+      await tester.pumpAndSettle();
+      await tester.enterText(input, '1');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await binding.takeScreenshot('${prefix}_04_reminder_form');
+      final submit = find.descendant(
+        of: form,
+        matching: find.widgetWithText(ElevatedButton, 'Hẹn giờ'),
+      );
+      await tester.ensureVisible(submit);
+      await tester.pumpAndSettle();
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      final list = find.byType(RelayReminderList);
+      RelayReminderList current() => tester.widget<RelayReminderList>(list);
+      expect(current().reminders.length, 3);
+      expect(current().reminders.last.duration, const Duration(minutes: 1));
+      expect(current().reminders.last.deviceId, 'demo_device');
+      await tester.ensureVisible(list);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await binding.takeScreenshot('${prefix}_05_added');
+
+      final group = find.descendant(of: list, matching: find.byType(Switch));
+      await tester.ensureVisible(group);
+      await tester.pumpAndSettle();
+      await tester.tap(group);
+      await tester.pumpAndSettle();
+      expect(current().areRemindersActive, isFalse);
+      await binding.takeScreenshot('${prefix}_06_group_off');
+      await tester.tap(group);
+      await tester.pumpAndSettle();
+      expect(current().areRemindersActive, isTrue);
+      await binding.takeScreenshot('${prefix}_07_group_on');
+
+      final delete = find
+          .descendant(of: list, matching: find.byIcon(Icons.delete))
+          .last;
+      await tester.ensureVisible(delete);
+      await tester.pumpAndSettle();
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      expect(current().reminders.length, 2);
+      await tester.ensureVisible(list);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await binding.takeScreenshot('${prefix}_08_deleted');
+      completed.add(prefix);
+    }
+    // Preserve native screenshot bytes consumed by the host driver.
+    binding.reportData ??= <String, dynamic>{};
+    binding.reportData!.addAll({
+      'completed_modes': completed,
+      'network': 'no_app_api_calls',
+      'scenario': 'local_relay_demo',
+    });
+    expect((binding.reportData!['screenshots'] as List).length, 16);
+  });
+}

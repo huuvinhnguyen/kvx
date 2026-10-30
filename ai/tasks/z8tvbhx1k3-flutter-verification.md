@@ -105,3 +105,38 @@ No commit, push, PR, deploy, data change or device command. Next gate requires
 real platform/remote CI execution. If owner explicitly authorizes publication of
 an unverified checkpoint, keep it draft and preserve this BLOCKED qualification;
 never relabel that exception as READY TO COMMIT or a passed release gate.
+
+## Simulator evidence extension — owner asked the agent to perform the smoke
+
+Baseline commitbc0b67b/PR22 CI run41098878308 already passed strict analyze,
+183unit/widgettests, Web and iOS simulator builds. Post-CI Final Verifier kept a
+manual demo-flow evidence gate. Owner then requested the agent do this step.
+
+Add a test-only simulator harness to the existing macOS CI job: isolated temporary
+app copy, SDK integration_test dependency only in that copy, exact-original-lock
+package comparison, actual iPhone Simulator drive,16PNG state captures and JSON
+result, artifacts retained7days. App repository pubspec/lock stay unchanged;
+no package upgrade or product navigation change. Main test entry launches only
+RelayWidgetsDemoScreen, not KvxApp/auth/session/API/MQTT. Covers light/dark,
+ON/OFF, add/delete local reminder, group OFF/ON and checks Flutter exceptions.
+Templates are outside app Dart analysis until copied into the isolated project,
+where actual Flutter analyze and drive are required. Stdlib Python tooling tests
+cover source preservation/destination safety and fail-closed dependency checks.
+
+Screenshot driver follows official Flutter3.41.9 packages/integration_test/README.md
+and integration_test_driver_extended.dart (iOS screenshots supported). CI artifact
+contains only synthetic demo images, selected simulator metadata, driver log and
+result/dependency summaries. Image-review completion must be recorded separately
+from scripted assertions; do not call automation manual tapping or claim native
+Swift/Switch/hardware/production acceptance. No automatic waiver of manual gate.
+
+Current extension checks:4Python testsPASS, bash syntaxPASS, YAML structurePASS,
+diff hygienePASS. Actual new simulator scenario/image review NOT RUN pending
+reviewed checkpoint publication and CI. Existing commit/push authorization from
+owner persists for this bounded verification extension; PR stays Draft, no merge.
+
+Simulator-extension Reviewer inspected8delta paths and returned READY WITH
+NON-BLOCKING NOTES. Confirmed P2 (overwriting native screenshot reportData) fixed
+by metadata merge preserving screenshots plus16-image assertion. Added explicit
+post-scroll frame settling per review recommendation; driver checks exact16names.
+Current Python4tests/bash/diff checks passed; actual CI remains pending.

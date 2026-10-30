@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
+import '../../domain/entities/device.dart';
 import '../../domain/entities/relay_channel.dart';
 import '../../domain/entities/relay_reminder.dart';
-import '../../domain/entities/relay_statistics.dart';
 import '../../domain/entities/reminder_repeat_type.dart';
-import '../widgets/relay/relay_toggle_switch.dart';
-import '../widgets/relay/relay_longlast_form.dart';
-import '../widgets/relay/relay_reminder_form.dart';
-import '../widgets/relay/relay_reminder_list.dart';
-import '../widgets/relay/device_info_header.dart';
-import '../widgets/relay/device_control_footer.dart';
+import '../widgets/relay_toggle_switch.dart';
+import '../widgets/relay_longlast_form.dart';
+import '../widgets/relay_reminder_form.dart';
+import '../widgets/relay_reminder_list.dart';
+import '../widgets/device_info_header.dart';
+import '../widgets/device_control_footer.dart';
 
 /// Demo screen to showcase all relay control widgets
 class RelayWidgetsDemoScreen extends StatefulWidget {
@@ -19,7 +19,7 @@ class RelayWidgetsDemoScreen extends StatefulWidget {
 }
 
 class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
-  final RelayChannel _channel = const RelayChannel(
+  RelayChannel _channel = const RelayChannel(
     index: 0,
     isOn: false,
     label: 'Kênh 1',
@@ -47,6 +47,15 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
   ];
 
   bool _remindersActive = true;
+  final _device = Device(
+    id: 'demo_device',
+    name: 'esp8266_demo',
+    type: DeviceType.switchDevice,
+    status: DeviceStatus.offline,
+    firmwareVersion: 'v1.0.0',
+    appVersion: 'v2.0.0',
+    lastConnected: DateTime.now().subtract(const Duration(minutes: 5)),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -62,10 +71,7 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
           children: [
             // Device Info Header
             DeviceInfoHeader(
-              deviceName: 'esp8266_demo',
-              lastConnected: DateTime.now().subtract(const Duration(minutes: 5)),
-              firmwareVersion: 'v1.0.0',
-              appVersion: 'v2.0.0',
+              device: _device,
               onRefresh: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Refreshing device...')),
@@ -82,11 +88,12 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
             ),
             const SizedBox(height: 12),
             RelayToggleSwitch(
-              channel: _channel,
-              onToggle: (value) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Toggle: $value')),
-                );
+              value: _channel.isOn,
+              onChanged: (value) {
+                setState(() => _channel = _channel.copyWith(isOn: value));
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('Toggle: $value')));
               },
             ),
 
@@ -117,14 +124,10 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
             ),
             const SizedBox(height: 12),
             RelayReminderForm(
-              onSubmit: (startTime, duration, repeatType) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Reminder: $startTime, ${duration.inSeconds}s, $repeatType',
-                    ),
-                  ),
-                );
+              deviceId: _device.id,
+              relayIndex: _channel.index,
+              onAdd: (reminder) {
+                setState(() => _reminders.add(reminder));
               },
             ),
 
@@ -138,8 +141,8 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
             const SizedBox(height: 12),
             RelayReminderList(
               reminders: _reminders,
-              remindersActive: _remindersActive,
-              onToggleRemindersActive: (value) {
+              areRemindersActive: _remindersActive,
+              onToggleAll: (value) {
                 setState(() {
                   _remindersActive = value;
                 });
@@ -147,19 +150,8 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
                   SnackBar(content: Text('Reminders active: $value')),
                 );
               },
-              onToggleReminder: (reminder) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Toggle reminder: ${reminder.id}'),
-                  ),
-                );
-              },
-              onDeleteReminder: (reminder) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Delete reminder: ${reminder.id}'),
-                  ),
-                );
+              onDelete: (id) {
+                setState(() => _reminders.removeWhere((r) => r.id == id));
               },
             ),
 
@@ -172,9 +164,7 @@ class _RelayWidgetsDemoScreenState extends State<RelayWidgetsDemoScreen> {
             ),
             const SizedBox(height: 12),
             DeviceControlFooter(
-              deviceId: 'esp8266_demo',
-              firmwareVersion: 'v1.0.0',
-              appVersion: 'v2.0.0',
+              device: _device,
               onRestart: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Restarting device...')),

@@ -5,63 +5,67 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Flutter 3.41.9 bundles Dart 3.11.5, matching pubspec.yaml.
+  FLUTTER_VERSION: '3.41.9'
 
 jobs:
   flutter:
+    name: Flutter analyze, tests and web build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kvx_flutter
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
-          channel: 'stable'
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.pub-cache
-          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
-
-      - name: Install dependencies
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Record toolchain
         run: |
-          cd kvx_flutter
-          flutter pub get
-
+          flutter --version
+          dart --version
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
       - name: Analyze
-        run: |
-          cd kvx_flutter
-          flutter analyze
-
+        run: flutter analyze
+      - name: Run unit and widget tests
+        run: flutter test --reporter expanded
       - name: Build Web
-        run: |
-          cd kvx_flutter
-          flutter build web
-
-      - name: Build iOS (macOS only)
-        if: matrix.os == 'macos-latest'
-        run: |
-          cd kvx_flutter
-          flutter build ios --simulator --no-codesign
+        run: flutter build web
+      - name: Verify dependency files unchanged
+        if: always()
+        run: git -C .. diff --exit-code -- kvx_flutter/pubspec.yaml kvx_flutter/pubspec.lock
 
   ios:
+    name: Flutter iOS simulator build
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: kvx_flutter
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
-          channel: 'stable'
-
-      - name: Install dependencies
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Record toolchain
         run: |
-          cd kvx_flutter
-          flutter pub get
-
-      - name: Build iOS
-        run: |
-          cd kvx_flutter
-          flutter build ios --simulator --no-codesign
+          flutter --version
+          dart --version
+          xcodebuild -version
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build iOS simulator
+        run: flutter build ios --simulator --no-codesign
+      - name: Verify dependency files unchanged
+        if: always()
+        run: git -C .. diff --exit-code -- kvx_flutter/pubspec.yaml kvx_flutter/pubspec.lock

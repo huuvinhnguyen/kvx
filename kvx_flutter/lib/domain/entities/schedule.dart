@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 enum ScheduleType {
   daily('Hằng ngày'),
   weekly('Hằng tuần'),

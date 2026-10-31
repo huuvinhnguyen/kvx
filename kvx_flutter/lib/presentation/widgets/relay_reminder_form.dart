@@ -149,7 +149,10 @@ class _RelayReminderFormState extends State<RelayReminderForm> {
               Expanded(
                 child: DropdownButtonFormField<DurationUnit>(
                   initialValue: _selectedUnit,
-                  style: const TextStyle(fontSize: 18),
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.all(15),
@@ -176,7 +179,10 @@ class _RelayReminderFormState extends State<RelayReminderForm> {
           // Repeat type dropdown
           DropdownButtonFormField<ReminderRepeatType>(
             initialValue: _selectedRepeatType,
-            style: const TextStyle(fontSize: 18),
+            style: TextStyle(
+              fontSize: 18,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               contentPadding: EdgeInsets.all(15),

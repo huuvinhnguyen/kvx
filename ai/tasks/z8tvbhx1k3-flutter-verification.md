@@ -190,3 +190,23 @@ and constrain text beside switches. Do not shrink fonts, hide controls, widen
 the regression viewport, or weaken exception checks. Revised execution pending.
 The existing2x toggle also reserves120x96px of layout space around its centered
 control, preventing its painted bounds from overlapping the adjacent label.
+
+
+## Actual simulator success and visual contrast follow-up
+
+Source9270278 CI41147934108 PASSED Linux4Python/analyze/183Fluttertests/Web and
+macOS normal build, isolated test build/sign/boot/drive, exact16nativePNGs and
+light/dark completed_modes. Artifact13022565746 SHA256
+44b33e2f1a6c79d3a4d2da4821fe15eb6063bb5117e4a4c70f931e30b9605e1c,
+checkout48110d4d18f2e3c1f4c6ce18e8e80a8a18691eb8 (PR synthetic merge),
+retained until2026-11-07. Original71locked packages unchanged.
+
+Root visually inspected all16captures and found a real light-theme defect:
+selected dropdown text in longlast and reminder forms is almost white on the
+light surface, while dark selections are legible. Layout overflow/overlap is
+resolved and add/delete/group states are visible, but visual acceptance is NOT
+passed because of contrast. Set the3dropdown text styles to semantic onSurface,
+preserving font sizes/values/handlers. Add light/dark regression checking rendered
+selected labels have contrast>=4.5 against their form surface. No reminder/API
+write execution, dependency or native Swift change. Revised CI/image review
+required; scripted simulator input is not manual tapping.

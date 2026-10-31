@@ -79,26 +79,38 @@ class DeviceInfoHeader extends StatelessWidget {
             ],
             if (device.firmwareVersion != null || device.appVersion != null) ...[
               const Divider(height: 24),
-              Row(
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
                 children: [
-                  if (device.firmwareVersion != null) ...[
-                    const Icon(Icons.settings, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Firmware: ${device.firmwareVersion}',
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  if (device.firmwareVersion != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.settings, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Firmware: ${device.firmwareVersion}',
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                  if (device.firmwareVersion != null && device.appVersion != null)
-                    const SizedBox(width: 16),
-                  if (device.appVersion != null) ...[
-                    const Icon(Icons.phone_android, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text(
-                      'App: ${device.appVersion}',
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  if (device.appVersion != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.phone_android, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'App: ${device.appVersion}',
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
                 ],
               ),
             ],

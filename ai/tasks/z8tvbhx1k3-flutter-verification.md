@@ -178,3 +178,15 @@ The unbounded row is the suspected source; a passing revised device run must
 validate the repair. Change the existing demo regression from1200px desktop width
 to390px phone width so this class of mobile overflow cannot be hidden by that test.
 Actual revised Flutter/widget/device checks pending CI; no pass inferred locally.
+
+
+The390px Flutter widget regression on175ec89 (CI41147489337 Linux job124375898461)
+then exposed3additional layout errors with exact widget locations:
+DeviceInfoHeader version row123px, RelayToggleSwitch label40px, and
+RelayReminderList header88px overflow. This regression uses Flutter test fonts;
+these values are distinct from the native simulator's8.1px finding. Extend the
+same bounded responsive repair to these evidenced rows: wrap version metadata
+and constrain text beside switches. Do not shrink fonts, hide controls, widen
+the regression viewport, or weaken exception checks. Revised execution pending.
+The existing2x toggle also reserves120x96px of layout space around its centered
+control, preventing its painted bounds from overlapping the adjacent label.

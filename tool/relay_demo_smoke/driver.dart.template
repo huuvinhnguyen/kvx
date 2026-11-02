@@ -1,0 +1,41 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:integration_test/integration_test_driver_extended.dart';
+
+Future<void> main() async {
+  final root = Platform.environment['RELAY_SMOKE_ARTIFACT_DIR'];
+  if (root == null) {
+    throw StateError('Missing artifact directory');
+  }
+  final directory = Directory(root)..createSync(recursive: true);
+  await integrationDriver(
+    onScreenshot:
+        (String name, List<int> bytes, [Map<String, Object?>? args]) async {
+          if (!RegExp(r'^(light|dark)_0[1-8]_[a-z_]+$').hasMatch(name) ||
+              bytes.length < 8) {
+            return false;
+          }
+          const png = [137, 80, 78, 71, 13, 10, 26, 10];
+          for (var i = 0; i < png.length; i++) {
+            if (bytes[i] != png[i]) {
+              return false;
+            }
+          }
+          await File('${directory.path}/$name.png').writeAsBytes(bytes);
+          return true;
+        },
+    responseDataCallback: (data) async {
+      if (data == null ||
+          jsonEncode(data['completed_modes']) != '["light","dark"]') {
+        throw StateError('Simulator scenario did not finish both modes');
+      }
+      await File('${directory.path}/result.json').writeAsString(
+        jsonEncode({
+          'completed_modes': data['completed_modes'],
+          'scenario': data['scenario'],
+          'network': data['network'],
+        }),
+      );
+    },
+  );
+}

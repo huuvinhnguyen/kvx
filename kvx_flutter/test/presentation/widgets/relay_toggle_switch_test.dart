@@ -18,6 +18,7 @@ void main() {
         ),
       );
 
+      expect(changedValue, isNull);
       expect(find.text('BẬT / TẮT'), findsOneWidget);
       expect(find.byType(Switch), findsOneWidget);
     });
@@ -83,10 +84,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: RelayToggleSwitch(
-              value: true,
-              onChanged: (_) {},
-            ),
+            body: RelayToggleSwitch(value: true, onChanged: (_) {}),
           ),
         ),
       );

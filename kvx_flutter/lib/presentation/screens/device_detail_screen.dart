@@ -133,7 +133,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: widget.device.status.color.withOpacity(0.12),
+              color: widget.device.status.color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -165,7 +165,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: widget.device.status.color.withOpacity(0.12),
+              color: widget.device.status.color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -227,7 +227,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                     _isOn = value;
                   });
                 },
-                activeColor: Colors.green,
+                activeThumbColor: Colors.green,
               ),
               Text(
                 _isOn ? 'BẬT' : 'TẮT',
@@ -296,7 +296,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<ScheduleType>(
-                  value: _selectedScheduleType,
+                  initialValue: _selectedScheduleType,
                   decoration: const InputDecoration(
                     labelText: 'Loại',
                     border: OutlineInputBorder(),
@@ -347,7 +347,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _schedules.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final schedule = _schedules[index];
                 return Container(

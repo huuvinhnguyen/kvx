@@ -84,7 +84,10 @@ class _RelayLonglastFormState extends State<RelayLonglastForm> {
           DropdownButtonFormField<DurationUnit>(
             initialValue: _selectedUnit,
             isExpanded: true,
-            style: const TextStyle(fontSize: 24),
+            style: TextStyle(
+              fontSize: 24,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               contentPadding: EdgeInsets.all(15),

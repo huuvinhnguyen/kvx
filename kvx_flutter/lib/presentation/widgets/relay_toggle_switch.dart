@@ -30,20 +30,28 @@ class RelayToggleSwitch extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Transform.scale(
-            scale: 2.0,
-            child: Switch(
-              value: value,
-              onChanged: enabled ? onChanged : null,
-              activeTrackColor: Theme.of(context).colorScheme.primary,
+          SizedBox(
+            width: 120,
+            height: 96,
+            child: Center(
+              child: Transform.scale(
+                scale: 2.0,
+                child: Switch(
+                  value: value,
+                  onChanged: enabled ? onChanged : null,
+                  activeTrackColor: Theme.of(context).colorScheme.primary,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 20),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],

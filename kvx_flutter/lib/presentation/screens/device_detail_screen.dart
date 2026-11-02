@@ -1,3 +1,5 @@
+import '../../application/usecases/switch_use_cases.dart';
+import 'switch_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../application/usecases/buzzer_usecases.dart';
@@ -89,6 +91,13 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.device.type == DeviceType.switchDevice) {
+      return SwitchDetailScreen(
+        key: ValueKey(widget.device.id),
+        deviceId: widget.device.id,
+        useCases: context.read<SwitchUseCases>(),
+      );
+    }
     if (widget.device.type == DeviceType.buzzer) {
       return BuzzerDetailScreen(
         device: widget.device,

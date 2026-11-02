@@ -48,6 +48,8 @@ private struct AuthenticatedContent: View {
     let generation: UInt64
     @State private var devices: DeviceViewModel
     let accountMethodsContinuity: AccountMethodsContinuity
+    @State private var switchContinuity = SwitchCommandContinuity()
+    private let switchRepository: SwitchAPIClient
     private let buzzerUseCases: BuzzerUseCases
     private let pirTriggerActionUseCases: PIRTriggerActionUseCases
     private let pirRepository: PIRAPIClient
@@ -59,6 +61,7 @@ private struct AuthenticatedContent: View {
         self.accountMethodsContinuity = accountMethodsContinuity
         let transport = AuthenticatedTransport(authority: coordinator, generation: generation)
         _devices = State(initialValue: DeviceViewModel(repository: RemoteDeviceRepository(dataSource: BinblogDeviceDataSource(transport: transport))))
+        switchRepository = SwitchAPIClient(transport: transport)
         buzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient(transport: transport))
         pirRepository = PIRAPIClient(transport: transport)
         pirTriggerActionUseCases = PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient(transport: transport))
@@ -66,6 +69,7 @@ private struct AuthenticatedContent: View {
     var body: some View {
         ContentView(viewModel: devices, buzzerUseCases: buzzerUseCases, pirRepository: pirRepository,
                     pirTriggerActionUseCases: pirTriggerActionUseCases,
+                    switchUseCases: SwitchUseCases(repository: switchRepository, continuity: switchContinuity),
                     accountMethodsView: AnyView(AccountMethodsView(coordinator: coordinator, generation: generation,
                                                                     continuity: accountMethodsContinuity)))
     }

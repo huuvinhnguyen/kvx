@@ -389,11 +389,25 @@ void main() {
       expect(find.text('Trạng thái snapshot: Chưa xác định'), findsOneWidget);
       expect(find.text('BẬT'), findsOneWidget);
       expect(find.text('TẮT'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('Hẹn giờ — chỉ đọc'), 200);
+      // The duration TextField also owns a Scrollable; target the page list.
+      final pageScrollable = find.descendant(
+        of: find.byType(ListView),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable && widget.axisDirection == AxisDirection.down,
+        ),
+      );
+      expect(pageScrollable, findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Hẹn giờ — chỉ đọc'),
+        200,
+        scrollable: pageScrollable,
+      );
       expect(find.text('Hẹn giờ — chỉ đọc'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Thống kê bản ghi log · UTC+07'),
         300,
+        scrollable: pageScrollable,
       );
       expect(find.text('Thống kê bản ghi log · UTC+07'), findsOneWidget);
       expect(find.text('Thêm hẹn giờ'), findsNothing);

@@ -1,3 +1,5 @@
+import 'application/usecases/switch_use_cases.dart';
+import 'data/repositories/binblog_switch_repository.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -195,6 +197,9 @@ class _AuthenticatedAppState extends State<_AuthenticatedApp> {
         create: (_) => PirTriggerActionUseCases(
           BinblogPirTriggerActionRepository(_source),
         ),
+      ),
+      Provider<SwitchUseCases>(
+        create: (_) => SwitchUseCases(BinblogSwitchRepository(_source)),
       ),
       Provider<BuzzerUseCases>(
         create: (_) => BuzzerUseCases(BinblogBuzzerRepository(_source)),

@@ -12,13 +12,16 @@ struct DeviceDetailView: View {
     let buzzerUseCases: BuzzerUseCases
     let pirTriggerActionUseCases: PIRTriggerActionUseCases
     var pirRepository: any PIRRepository = PIRAPIClient()
+    var switchUseCases = SwitchUseCases(repository: SwitchAPIClient())
     @State private var isOn = false
     @State private var schedules: [Schedule] = []
     @State private var showingAddSchedule = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        if device.type == .buzzer {
+        if device.type == .switch {
+            SwitchDetailView(deviceID: device.id, useCases: switchUseCases).id(device.id)
+        } else if device.type == .buzzer {
             BuzzerDetailView(device: device, useCases: buzzerUseCases)
                 .id(device.id)
         } else if device.type == .pir {

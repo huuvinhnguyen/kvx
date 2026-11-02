@@ -12,12 +12,14 @@ struct DeviceListView: View {
     private let buzzerUseCases: BuzzerUseCases
     private let pirTriggerActionUseCases: PIRTriggerActionUseCases
     private let pirRepository: any PIRRepository
+    private let switchUseCases: SwitchUseCases
     private let accountMethodsView: AnyView?
     @State private var viewModel: DeviceViewModel
     @State private var showingAddSheet = false
     @State private var showingLogin = false
 
-    init(viewModel: DeviceViewModel, buzzerUseCases: BuzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient()), pirRepository: any PIRRepository = PIRAPIClient(), pirTriggerActionUseCases: PIRTriggerActionUseCases = PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient()), accountMethodsView: AnyView? = nil) {
+    init(viewModel: DeviceViewModel, buzzerUseCases: BuzzerUseCases = BuzzerUseCases(repository: BuzzerAPIClient()), pirRepository: any PIRRepository = PIRAPIClient(), pirTriggerActionUseCases: PIRTriggerActionUseCases = PIRTriggerActionUseCases(repository: PIRTriggerActionAPIClient()), accountMethodsView: AnyView? = nil, switchUseCases: SwitchUseCases = SwitchUseCases(repository: SwitchAPIClient())) {
+        self.switchUseCases = switchUseCases
         self.buzzerUseCases = buzzerUseCases
         self.pirTriggerActionUseCases = pirTriggerActionUseCases
         self.pirRepository = pirRepository
@@ -50,7 +52,7 @@ struct DeviceListView: View {
                 List {
                     ForEach(viewModel.filteredDevices) { device in
                         NavigationLink {
-                            DeviceDetailView(device: device, buzzerUseCases: buzzerUseCases, pirTriggerActionUseCases: pirTriggerActionUseCases, pirRepository: pirRepository)
+                            DeviceDetailView(device: device, buzzerUseCases: buzzerUseCases, pirTriggerActionUseCases: pirTriggerActionUseCases, pirRepository: pirRepository, switchUseCases: switchUseCases)
                         } label: {
                             DeviceRow(device: device)
                         }
